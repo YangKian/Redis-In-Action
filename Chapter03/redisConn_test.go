@@ -1,100 +1,184 @@
 package main
 
 import (
-	"github.com/satori/go.uuid"
-	"redisInAction/Chapter03/pkg/common"
+	"fmt"
+	"github.com/go-redis/redis"
 	"redisInAction/Chapter03/pkg/redisConn"
-	"redisInAction/config"
 	"testing"
 	"time"
 )
 
-func init() {
-	config.DB = 0
-	config.Addr = "192.168.1.6:6379"
-	config.Password = ""
-}
-
 func TestLoginCookies(t *testing.T) {
 	conn := redisConn.ConnectRedis()
-
-	token := uuid.NewV4().String()
-
-	t.Run("Test UpdateToken", func(t *testing.T) {
-		conn.UpdateToken(token, "username", "itemX")
-		t.Log("We just logged-in/update token: \n", token)
-		t.Log("For user: ", "username\n")
-		t.Log("\nWhat username do we get when we look-up that token?\n")
-		r := conn.CheckToken(token)
-		t.Log("username: ", r)
-		assertStringResult(t, "username", r)
-
-		t.Log("Let's drop the maximum number of cookies to 0 to clean them out\n")
-		t.Log("We will start a thread to do the cleaning, while we stop it later\n")
-
-		common.LIMIT = 0
-		go conn.CleanSessions()
-		time.Sleep(1 * time.Second)
-		common.QUIT = true
-		time.Sleep(2 * time.Second)
-
-		assertThread(t, common.FLAG)
-
-		s := conn.HLen("login:").Val()
-		t.Log("The current number of sessions still available is:", s)
-		assertnumResult(t, 1, int(s))
-		defer reset(conn)
+	
+	t.Run("Test INCR and DECR", func(t *testing.T) {
+		conn.Get("key")
+		res := conn.Incr("key").Val()
+		assertnumResult(t, 1, res)
+		res = conn.IncrBy("key", 15).Val()
+		assertnumResult(t, 16, res)
+		res = conn.DecrBy("key", 5).Val()
+		assertnumResult(t, 11, res)
+		succ := conn.Set("key", 13, 0).Val()
+		assertStringResult(t, "OK", succ)
+		res, _ = conn.Get("key").Int64()
+		assertnumResult(t, 13, res)
+		defer conn.Reset()
 	})
 
-	t.Run("Test shopping cart cookie", func(t *testing.T) {
-		t.Log("We'll refresh our session...")
-		conn.UpdateToken(token, "username", "itemX")
-		t.Log("And add an item to the shopping cart")
-		conn.AddToCart(token, "itemY", 3)
-		r := conn.HGetAll("cart:" + token).Val()
-		t.Log("Our shopping cart currently has:", r)
-
-		assertTrue(t, len(r) >= 1)
-
-		t.Log("Let's clean out our sessions and carts")
-		common.LIMIT = 0
-		go conn.CleanFullSession()
-		time.Sleep(1 * time.Second)
-		common.QUIT = true
-		time.Sleep(2 * time.Second)
-		assertThread(t, common.FLAG)
-
-		r = conn.HGetAll("cart:" + token).Val()
-		t.Log("Our shopping cart now contains:", r)
-		defer reset(conn)
+	t.Run("Operation on substring and bit", func(t *testing.T) {
+		res := conn.Append("new-string-key", "hello ").Val()
+		assertnumResult(t, 6, res)
+		res = conn.Append("new-string-key", "world!").Val()
+		assertnumResult(t, 12, res)
+		str := conn.GetRange("new-string-key", 3, 7).Val()
+		assertStringResult(t, "lo wo", str)
+		res = conn.SetRange("new-string-key", 0, "H").Val()
+		conn.SetRange("new-string-key", 6, "W")
+		assertnumResult(t, 12, 12)
+		str = conn.Get("new-string-key").Val()
+		assertStringResult(t, "Hello World!", str)
+		res = conn.SetRange("new-string-key", 11, ", how are you?").Val()
+		assertnumResult(t, 25, res)
+		str = conn.Get("new-string-key").Val()
+		assertStringResult(t, "Hello World, how are you?", str)
+		res = conn.SetBit("another-key", 2, 1).Val()
+		assertnumResult(t, 0, 0)
+		res = conn.SetBit("another-key", 7, 1).Val()
+		assertnumResult(t, 0, 0)
+		str = conn.Get("another-key").Val()
+		assertStringResult(t, "!", str)
+		defer conn.Reset()
+	})
+	
+	t.Run("Operation on list", func(t *testing.T) {
+		conn.RPush("list-key", "last")
+		conn.LPush("list-key", "first")
+		res := conn.RPush("list-key", "new last").Val()
+		assertnumResult(t, 3, res)
+		lst := conn.LRange("list-key", 0, -1).Val()
+		t.Log("the list is: ", lst)
+		str := conn.LPop("list-key").Val()
+		assertStringResult(t, "first", str)
+		str = conn.LPop("list-key").Val()
+		assertStringResult(t, "last", str)
+		lst = conn.LRange("list-key", 0, -1).Val()
+		t.Log("the list is: ", lst)
+		res = conn.RPush("list-key", "a", "b", "c").Val()
+		assertnumResult(t, 4, res)
+		conn.LTrim("list-key", 2, -1)
+		t.Log("the list is: ", fmt.Sprintf("%v", conn.LRange("list-key", 0, -1).Val()))
+		defer conn.Reset()
 	})
 
-	//TODO：后续请求相关的部分未做
-	t.Run("Test cache request", func(t *testing.T) {
-		
+	t.Run("Block pop", func(t *testing.T) {
+		conn.RPush("list", "item1")
+		conn.RPush("list", "item2")
+		conn.RPush("list2", "item3")
+		item := conn.BRPopLPush("list2", "list", 1 * time.Second).Val()
+		assertStringResult(t, "item3", item)
+		conn.BRPopLPush("list2", "list", 1 * time.Second)
+		t.Log("the list is: ", fmt.Sprintf("%v", conn.LRange("list", 0, -1).Val()))
+		conn.BRPopLPush("list", "list2", 1 * time.Second)
+		t.Log("the list is: ", fmt.Sprintf("%v", conn.LRange("list", 0, -1).Val()))
+		t.Log("the list2 is: ", fmt.Sprintf("%v", conn.LRange("list2", 0, -1).Val()))
+		res := conn.BLPop(1 * time.Second, "list", "list2").Val()
+		t.Log("the result of blpop: ", res)
+		res = conn.BLPop(1 * time.Second, "list", "list2").Val()
+		t.Log("the result of blpop: ", res)
+		res = conn.BLPop(1 * time.Second, "list", "list2").Val()
+		t.Log("the result of blpop: ", res)
+		res = conn.BLPop(1 * time.Second, "list", "list2").Val()
+		t.Log("the result of blpop: ", res)
+		defer conn.Reset()
+	})
+
+	t.Run("Operation of set", func(t *testing.T) {
+		res := conn.SAdd("set-key", "a", "b", "c").Val()
+		assertnumResult(t, 3, res)
+		conn.SRem("set-key", "c", "d")
+		res = conn.SRem("set-key", "c", "d").Val()
+		assertnumResult(t, 0, res)
+		res = conn.SCard("set-key").Val()
+		assertnumResult(t, 2, 2)
+		t.Log("all items in set: ", fmt.Sprintf("%v", conn.SMembers("set-key").Val()))
+		conn.SMove("set-key", "set-key2", "a")
+		conn.SMove("set-key", "set-key2", "c")
+		t.Log("all items in set2: ", fmt.Sprintf("%v", conn.SMembers("set-key2").Val()))
+
+		conn.SAdd("skey1", "a", "b", "c", "d")
+		conn.SAdd("skey2", "c", "d", "e", "f")
+		set := conn.SDiff("skey1", "skey2").Val()
+		t.Log("the diff between two set is: ", set)
+		set = conn.SInter("skey1", "skey2").Val()
+		t.Log("the inter between two set is: ", set)
+		set = conn.SUnion("skey1", "skey2").Val()
+		t.Log("the union between two set is: ", set)
+		defer conn.Reset()
+	})
+
+	t.Run("Operation on hash", func(t *testing.T) {
+		conn.HMSet("hash-key", map[string]interface{}{
+			"k1": "v1",
+			"k2": "v2",
+			"k3": "v3",
+		})
+		res := conn.HMGet("hash-key", "k2", "k3").Val()
+		t.Log("the result of get: ", res)
+		length := conn.HLen("hash-key").Val()
+		assertnumResult(t, 3, length)
+		conn.HDel("hash-key", "k1", "k2")
+		mps := conn.HGetAll("hash-key").Val()
+		t.Log("the result of get: ", mps)
+		conn.HMSet("hash-key2", map[string]interface{}{
+			"short": "hello",
+			"long": "1000",
+		})
+		strs := conn.HKeys("hash-key2").Val()
+		t.Log("the result of hkeys: ", strs)
+		isOk := conn.HExists("hash-key2", "num").Val()
+		assertFalse(t, isOk)
+		count := conn.HIncrBy("hash-key2", "num", 1).Val()
+		assertnumResult(t, 1, count)
+		defer conn.Reset()
+	})
+
+	t.Run("Operation on zset", func(t *testing.T) {
+		res := conn.ZAdd("zset-key", redis.Z{Member:"a", Score:3}, redis.Z{Member:"b", Score:2},
+		redis.Z{Member:"c", Score:1}).Val()
+		assertnumResult(t, 3, res)
+		res = conn.ZCard("zset-key").Val()
+		assertnumResult(t, 3, res)
+		fnum := conn.ZIncrBy("zset-key", 3, "c").Val()
+		assertfloatResult(t, 4.0, fnum)
+		fnum = conn.ZScore("zset-key", "b").Val()
+		assertfloatResult(t, 2.0, fnum)
+		res = conn.ZRank("zset-key", "c").Val()
+		assertnumResult(t, 2, res)
+		res = conn.ZCount("zset-key", "0", "3").Val()
+		assertnumResult(t, 2, res)
+		conn.ZRem("zset-key", "b")
+		zset := conn.ZRangeWithScores("zset-key", 0, -1).Val()
+		t.Log("the result of zrange: ", zset)
+
+		conn.ZAdd("zset-1", redis.Z{Member:"a", Score:1}, redis.Z{Member:"b", Score:2},
+			redis.Z{Member:"c", Score:3})
+		conn.ZAdd("zset-2", redis.Z{Member:"b", Score:4}, redis.Z{Member:"d", Score:0},
+			redis.Z{Member:"c", Score:1})
+		conn.ZInterStore("zset-i", redis.ZStore{}, "zset-1", "zset-2")
+		zset = conn.ZRangeWithScores("zset-i", 0, -1).Val()
+		t.Log("the result of zrange: ", zset)
+		conn.ZUnionStore("zset-u", redis.ZStore{Aggregate:"min"}, "zset-1", "zset-2")
+		zset = conn.ZRangeWithScores("zset-u", 0, -1).Val()
+		t.Log("the result of zrange: ", zset)
+		conn.SAdd("set-1", "a", "d")
+		conn.ZUnionStore("zset-u2", redis.ZStore{}, "zset-1", "zset-2", "set-1")
+		zset = conn.ZRangeWithScores("zset-u2", 0, -1).Val()
+		t.Log("the result of zrange: ", zset)
+		defer conn.Reset()
 	})
 }
 
-func reset(conn *redisConn.RedisClient) {
-	delKeys := []string{"login:*", "recent:*", "viewed:*", "cart:*", "cache:*", "delay:*", "schedule:*", "inv:*"}
-	var toDel []string
-	for _, v := range delKeys {
-		toDel = append(toDel, conn.Keys(v).Val()...)
-	}
-
-	if len(toDel) != 0 {
-		conn.Del(toDel...)
-	}
-	common.QUIT = false
-	common.LIMIT = 10000000
-	common.FLAG = 1
-}
-
-func assertThread(t *testing.T, threadStat int32) {
-	if threadStat != 0 {
-		t.Error("The clean sessions thread is still alive?!?")
-	}
-}
 
 func assertStringResult(t *testing.T, want, get string) {
 	t.Helper()
@@ -103,7 +187,14 @@ func assertStringResult(t *testing.T, want, get string) {
 	}
 }
 
-func assertnumResult(t *testing.T, want, get int) {
+func assertnumResult(t *testing.T, want, get int64) {
+	t.Helper()
+	if want != get {
+		t.Errorf("want get %v, actual get %v\n", want, get)
+	}
+}
+
+func assertfloatResult(t *testing.T, want, get float64) {
 	t.Helper()
 	if want != get {
 		t.Errorf("want get %v, actual get %v\n", want, get)
@@ -113,6 +204,13 @@ func assertnumResult(t *testing.T, want, get int) {
 func assertTrue(t *testing.T, v bool) {
 	t.Helper()
 	if v != true {
+		t.Error("assert true but get a false value")
+	}
+}
+
+func assertFalse(t *testing.T, v bool) {
+	t.Helper()
+	if v == true {
 		t.Error("assert true but get a false value")
 	}
 }

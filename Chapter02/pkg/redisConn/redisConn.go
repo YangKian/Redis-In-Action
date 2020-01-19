@@ -168,3 +168,17 @@ func (r *RedisClient) CanCache(request string) {
 	//itemId :=
 }
 
+func (r *RedisClient) Reset() {
+	delKeys := []string{"login:*", "recent:*", "viewed:*", "cart:*", "cache:*", "delay:*", "schedule:*", "inv:*"}
+	var toDel []string
+	for _, v := range delKeys {
+		toDel = append(toDel, r.Keys(v).Val()...)
+	}
+
+	if len(toDel) != 0 {
+		r.Del(toDel...)
+	}
+	common.QUIT = false
+	common.LIMIT = 10000000
+	common.FLAG = 1
+}

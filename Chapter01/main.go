@@ -4,14 +4,7 @@ import (
 	"fmt"
 	"log"
 	"redisInAction/Chapter01/pkg/redisConn"
-	"redisInAction/config"
 )
-
-func init() {
-	config.DB = 0
-	config.Addr = "192.168.1.6:6379"
-	config.Password = ""
-}
 
 func main() {
 	conn := redisConn.ConnectRedis()

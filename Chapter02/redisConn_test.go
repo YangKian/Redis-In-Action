@@ -4,16 +4,9 @@ import (
 	"github.com/satori/go.uuid"
 	"redisInAction/Chapter02/pkg/common"
 	"redisInAction/Chapter02/pkg/redisConn"
-	"redisInAction/config"
 	"testing"
 	"time"
 )
-
-func init() {
-	config.DB = 0
-	config.Addr = "192.168.1.6:6379"
-	config.Password = ""
-}
 
 func TestLoginCookies(t *testing.T) {
 	conn := redisConn.ConnectRedis()
@@ -43,7 +36,7 @@ func TestLoginCookies(t *testing.T) {
 		s := conn.HLen("login:").Val()
 		t.Log("The current number of sessions still available is:", s)
 		assertnumResult(t, 1, int(s))
-		defer reset(conn)
+		defer conn.Reset()
 	})
 
 	t.Run("Test shopping cart cookie", func(t *testing.T) {
@@ -66,28 +59,13 @@ func TestLoginCookies(t *testing.T) {
 
 		r = conn.HGetAll("cart:" + token).Val()
 		t.Log("Our shopping cart now contains:", r)
-		defer reset(conn)
+		defer conn.Reset()
 	})
 
 	//TODO：后续请求相关的部分未做
 	t.Run("Test cache request", func(t *testing.T) {
 		
 	})
-}
-
-func reset(conn *redisConn.RedisClient) {
-	delKeys := []string{"login:*", "recent:*", "viewed:*", "cart:*", "cache:*", "delay:*", "schedule:*", "inv:*"}
-	var toDel []string
-	for _, v := range delKeys {
-		toDel = append(toDel, conn.Keys(v).Val()...)
-	}
-
-	if len(toDel) != 0 {
-		conn.Del(toDel...)
-	}
-	common.QUIT = false
-	common.LIMIT = 10000000
-	common.FLAG = 1
 }
 
 func assertThread(t *testing.T, threadStat int32) {
