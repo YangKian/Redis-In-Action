@@ -33,7 +33,7 @@ func (r *RedisClient) ArticleVote(article, user string) {
 
 	articleId := strings.Split(article, ":")[1]
 	if r.SAdd("voted:"+articleId, user).Val() != 0 {
-		r.ZIncrBy("score", common.VoteScore, article)
+		r.ZIncrBy("score:", common.VoteScore, article)
 		r.HIncrBy(article, "votes", 1)
 	}
 }

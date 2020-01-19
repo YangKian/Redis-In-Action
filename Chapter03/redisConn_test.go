@@ -177,6 +177,37 @@ func TestLoginCookies(t *testing.T) {
 		t.Log("the result of zrange: ", zset)
 		defer conn.Reset()
 	})
+
+	t.Run("Sort operation", func(t *testing.T) {
+		conn.RPush("sort-input", 23, 15, 110, 7)
+		res := conn.Sort("sort-input", &redis.Sort{Order:"ASC"}).Val()
+		t.Log("result of sort: ", res)
+		res = conn.Sort("sort-input", &redis.Sort{Alpha: true}).Val()
+		t.Log("result of sort: ", res)
+		conn.HSet("d-7", "field", 5)
+		conn.HSet("d-15", "field", 1)
+		conn.HSet("d-23", "field", 9)
+		conn.HSet("d-110", "field", 3)
+		res = conn.Sort("sort-input", &redis.Sort{By:"d-*->field"}).Val()
+		t.Log("result of sort: ", res)
+		res = conn.Sort("sort-input", &redis.Sort{By:"d-*->field", Get:[]string{"d-*->field"}}).Val()
+		t.Log("result of sort: ", res)
+		defer conn.Reset()
+	})
+
+	t.Run("Set expire", func(t *testing.T) {
+		conn.Set("key", "value", 0)
+		res := conn.Get("key").Val()
+		assertStringResult(t, "value", res)
+		conn.Expire("key", 1 * time.Second)
+		time.Sleep(2 * time.Second)
+		res = conn.Get("key").Val()
+		assertStringResult(t, "", res)
+		conn.Set("key", "value2", 0)
+		conn.Expire("key", 100 * time.Second)
+		t.Log("the rest time: ", conn.TTL("key").Val())
+		defer conn.Reset()
+	})
 }
 
 
@@ -201,16 +232,9 @@ func assertfloatResult(t *testing.T, want, get float64) {
 	}
 }
 
-func assertTrue(t *testing.T, v bool) {
-	t.Helper()
-	if v != true {
-		t.Error("assert true but get a false value")
-	}
-}
-
 func assertFalse(t *testing.T, v bool) {
 	t.Helper()
 	if v == true {
-		t.Error("assert true but get a false value")
+		t.Error("assert false but get a true value")
 	}
 }
