@@ -2,8 +2,8 @@ package main
 
 import (
 	"github.com/satori/go.uuid"
-	"redisInAction/Chapter02/pkg/common"
-	"redisInAction/Chapter02/pkg/redisConn"
+	"redisInAction/Chapter03/pkg/common"
+	"redisInAction/Chapter03/pkg/redisConn"
 	"redisInAction/config"
 	"testing"
 	"time"
