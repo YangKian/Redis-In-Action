@@ -1,7 +1,7 @@
 package redisConn
 
 import (
-	"github.com/go-redis/redis"
+	"github.com/go-redis/redis/v7"
 	"log"
 	"redisInAction/config"
 )
