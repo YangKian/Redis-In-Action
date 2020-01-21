@@ -1,7 +1,7 @@
 package config
 
 var (
-	Addr     string = "192.168.0.104:6379"
-	Password string = ""
-	DB       int = 0
+	Addr     = "192.168.56.101:6379"
+	Password = ""
+	DB       = 0
 )

@@ -3,8 +3,8 @@ package repository
 import "time"
 
 type Inventory struct {
-	Id string
-	Data string
+	Id     string
+	Data   string
 	Cached int64
 }
 

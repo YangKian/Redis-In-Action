@@ -10,7 +10,7 @@ import (
 
 func TestLoginCookies(t *testing.T) {
 	conn := redisConn.ConnectRedis()
-	
+
 	t.Run("Test INCR and DECR", func(t *testing.T) {
 		conn.Get("key")
 		res := conn.Incr("key").Val()
@@ -50,7 +50,7 @@ func TestLoginCookies(t *testing.T) {
 		assertStringResult(t, "!", str)
 		defer conn.Reset()
 	})
-	
+
 	t.Run("Operation on list", func(t *testing.T) {
 		conn.RPush("list-key", "last")
 		conn.LPush("list-key", "first")
@@ -75,20 +75,20 @@ func TestLoginCookies(t *testing.T) {
 		conn.RPush("list", "item1")
 		conn.RPush("list", "item2")
 		conn.RPush("list2", "item3")
-		item := conn.BRPopLPush("list2", "list", 1 * time.Second).Val()
+		item := conn.BRPopLPush("list2", "list", 1*time.Second).Val()
 		assertStringResult(t, "item3", item)
-		conn.BRPopLPush("list2", "list", 1 * time.Second)
+		conn.BRPopLPush("list2", "list", 1*time.Second)
 		t.Log("the list is: ", fmt.Sprintf("%v", conn.LRange("list", 0, -1).Val()))
-		conn.BRPopLPush("list", "list2", 1 * time.Second)
+		conn.BRPopLPush("list", "list2", 1*time.Second)
 		t.Log("the list is: ", fmt.Sprintf("%v", conn.LRange("list", 0, -1).Val()))
 		t.Log("the list2 is: ", fmt.Sprintf("%v", conn.LRange("list2", 0, -1).Val()))
-		res := conn.BLPop(1 * time.Second, "list", "list2").Val()
+		res := conn.BLPop(1*time.Second, "list", "list2").Val()
 		t.Log("the result of blpop: ", res)
-		res = conn.BLPop(1 * time.Second, "list", "list2").Val()
+		res = conn.BLPop(1*time.Second, "list", "list2").Val()
 		t.Log("the result of blpop: ", res)
-		res = conn.BLPop(1 * time.Second, "list", "list2").Val()
+		res = conn.BLPop(1*time.Second, "list", "list2").Val()
 		t.Log("the result of blpop: ", res)
-		res = conn.BLPop(1 * time.Second, "list", "list2").Val()
+		res = conn.BLPop(1*time.Second, "list", "list2").Val()
 		t.Log("the result of blpop: ", res)
 		defer conn.Reset()
 	})
@@ -132,7 +132,7 @@ func TestLoginCookies(t *testing.T) {
 		t.Log("the result of get: ", mps)
 		conn.HMSet("hash-key2", map[string]interface{}{
 			"short": "hello",
-			"long": "1000",
+			"long":  "1000",
 		})
 		strs := conn.HKeys("hash-key2").Val()
 		t.Log("the result of hkeys: ", strs)
@@ -144,8 +144,8 @@ func TestLoginCookies(t *testing.T) {
 	})
 
 	t.Run("Operation on zset", func(t *testing.T) {
-		res := conn.ZAdd("zset-key", redis.Z{Member:"a", Score:3}, redis.Z{Member:"b", Score:2},
-		redis.Z{Member:"c", Score:1}).Val()
+		res := conn.ZAdd("zset-key", redis.Z{Member: "a", Score: 3}, redis.Z{Member: "b", Score: 2},
+			redis.Z{Member: "c", Score: 1}).Val()
 		assertnumResult(t, 3, res)
 		res = conn.ZCard("zset-key").Val()
 		assertnumResult(t, 3, res)
@@ -161,14 +161,14 @@ func TestLoginCookies(t *testing.T) {
 		zset := conn.ZRangeWithScores("zset-key", 0, -1).Val()
 		t.Log("the result of zrange: ", zset)
 
-		conn.ZAdd("zset-1", redis.Z{Member:"a", Score:1}, redis.Z{Member:"b", Score:2},
-			redis.Z{Member:"c", Score:3})
-		conn.ZAdd("zset-2", redis.Z{Member:"b", Score:4}, redis.Z{Member:"d", Score:0},
-			redis.Z{Member:"c", Score:1})
+		conn.ZAdd("zset-1", redis.Z{Member: "a", Score: 1}, redis.Z{Member: "b", Score: 2},
+			redis.Z{Member: "c", Score: 3})
+		conn.ZAdd("zset-2", redis.Z{Member: "b", Score: 4}, redis.Z{Member: "d", Score: 0},
+			redis.Z{Member: "c", Score: 1})
 		conn.ZInterStore("zset-i", redis.ZStore{}, "zset-1", "zset-2")
 		zset = conn.ZRangeWithScores("zset-i", 0, -1).Val()
 		t.Log("the result of zrange: ", zset)
-		conn.ZUnionStore("zset-u", redis.ZStore{Aggregate:"min"}, "zset-1", "zset-2")
+		conn.ZUnionStore("zset-u", redis.ZStore{Aggregate: "min"}, "zset-1", "zset-2")
 		zset = conn.ZRangeWithScores("zset-u", 0, -1).Val()
 		t.Log("the result of zrange: ", zset)
 		conn.SAdd("set-1", "a", "d")
@@ -180,7 +180,7 @@ func TestLoginCookies(t *testing.T) {
 
 	t.Run("Sort operation", func(t *testing.T) {
 		conn.RPush("sort-input", 23, 15, 110, 7)
-		res := conn.Sort("sort-input", &redis.Sort{Order:"ASC"}).Val()
+		res := conn.Sort("sort-input", &redis.Sort{Order: "ASC"}).Val()
 		t.Log("result of sort: ", res)
 		res = conn.Sort("sort-input", &redis.Sort{Alpha: true}).Val()
 		t.Log("result of sort: ", res)
@@ -188,9 +188,9 @@ func TestLoginCookies(t *testing.T) {
 		conn.HSet("d-15", "field", 1)
 		conn.HSet("d-23", "field", 9)
 		conn.HSet("d-110", "field", 3)
-		res = conn.Sort("sort-input", &redis.Sort{By:"d-*->field"}).Val()
+		res = conn.Sort("sort-input", &redis.Sort{By: "d-*->field"}).Val()
 		t.Log("result of sort: ", res)
-		res = conn.Sort("sort-input", &redis.Sort{By:"d-*->field", Get:[]string{"d-*->field"}}).Val()
+		res = conn.Sort("sort-input", &redis.Sort{By: "d-*->field", Get: []string{"d-*->field"}}).Val()
 		t.Log("result of sort: ", res)
 		defer conn.Reset()
 	})
@@ -199,17 +199,16 @@ func TestLoginCookies(t *testing.T) {
 		conn.Set("key", "value", 0)
 		res := conn.Get("key").Val()
 		assertStringResult(t, "value", res)
-		conn.Expire("key", 1 * time.Second)
+		conn.Expire("key", 1*time.Second)
 		time.Sleep(2 * time.Second)
 		res = conn.Get("key").Val()
 		assertStringResult(t, "", res)
 		conn.Set("key", "value2", 0)
-		conn.Expire("key", 100 * time.Second)
+		conn.Expire("key", 100*time.Second)
 		t.Log("the rest time: ", conn.TTL("key").Val())
 		defer conn.Reset()
 	})
 }
-
 
 func assertStringResult(t *testing.T, want, get string) {
 	t.Helper()

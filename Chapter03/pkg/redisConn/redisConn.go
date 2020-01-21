@@ -43,7 +43,7 @@ func (r *RedisClient) Reset() {
 func (r *RedisClient) UpdateToken(token, user, item string) {
 	timestamp := time.Now().Unix()
 	r.HSet("login:", token, user)
-	r.ZAdd("recent", redis.Z{Score:float64(timestamp), Member:token})
+	r.ZAdd("recent", redis.Z{Score: float64(timestamp), Member: token})
 	if item != "" {
 		key := "viewed" + token
 		r.LRem(key, 1, item)
@@ -65,7 +65,7 @@ func (r *RedisClient) ArticleVote(article, user string) {
 	articleId := strings.Split(article, ":")[1]
 	pipeline := conn.Pipeline()
 	pipeline.SAdd("voted:"+articleId, user)
-	pipeline.Expire("voted:" + articleId, time.Duration(int(posted-float64(cutoff))) * time.Second)
+	pipeline.Expire("voted:"+articleId, time.Duration(int(posted-float64(cutoff)))*time.Second)
 	res, err := pipeline.Exec()
 	if err != nil {
 		log.Println("pipeline failed, the err is: ", err)
@@ -84,7 +84,7 @@ func (r *RedisClient) GetArticles(page int64, order string) []map[string]string 
 	if order == "" {
 		order = "score:"
 	}
-	start := utils.Max(page - 1, 0) * common.ArticlesPerPage
+	start := utils.Max(page-1, 0) * common.ArticlesPerPage
 	end := start + common.ArticlesPerPage - 1
 
 	ids := r.ZRevRange(order, start, end).Val()
@@ -95,4 +95,32 @@ func (r *RedisClient) GetArticles(page int64, order string) []map[string]string 
 		articles = append(articles, articleData)
 	}
 	return articles
+}
+
+const THIRTYDAYS = 30 * 86400
+
+func (r *RedisClient) CheckToken(token string) string {
+	return r.Get("login:" + token).String()
+}
+
+func (r *RedisClient) AddToCart(session, item string, count int) {
+	switch {
+	case count <= 0:
+		r.HDel("cart:"+session, item)
+	default:
+		r.HSet("cart:"+session, item, count)
+	}
+	r.Expire("cart:"+session, THIRTYDAYS)
+}
+
+func (r *RedisClient) UpdateTokenCh3(token, user, item string) {
+	r.Set("login:"+token, user, THIRTYDAYS)
+	key := "viewed:" + token
+	if item != "" {
+		r.LRem(key, 1, item)
+		r.RPush(key, item)
+		r.LTrim(key, -25, -1)
+		r.ZIncrBy("viewed:", -1, item)
+	}
+	r.Expire(key, THIRTYDAYS)
 }

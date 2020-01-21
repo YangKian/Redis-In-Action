@@ -45,6 +45,6 @@ func main() {
 	stop := make(chan struct{}, 1)
 	go RunPubsub(conn, stop)
 	Publisher(6, conn)
-	<- stop
+	<-stop
 	time.Sleep(5 * time.Second)
 }

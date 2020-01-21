@@ -34,10 +34,10 @@ func (r *RedisClient) CheckToken(token string) string {
 func (r *RedisClient) UpdateToken(token, user, item string) {
 	timestamp := time.Now().Unix()
 	r.HSet("login:", token, user)
-	r.ZAdd("recent", redis.Z{Score:float64(timestamp), Member:token})
+	r.ZAdd("recent", redis.Z{Score: float64(timestamp), Member: token})
 	if item != "" {
-		r.HSet("viewed:" + token, item, timestamp)
-		r.ZRemRangeByRank("viewed:" + token, 0, -26)
+		r.HSet("viewed:"+token, item, timestamp)
+		r.ZRemRangeByRank("viewed:"+token, 0, -26)
 	}
 }
 
@@ -67,9 +67,9 @@ func (r *RedisClient) CleanSessions() {
 func (r *RedisClient) AddToCart(session, item string, count int) {
 	switch {
 	case count <= 0:
-		r.HDel("cart:" + session, item)
+		r.HDel("cart:"+session, item)
 	default:
-		r.HSet("cart:" + session, item, count)
+		r.HSet("cart:"+session, item, count)
 	}
 }
 
@@ -82,12 +82,12 @@ func (r *RedisClient) CleanFullSession() {
 		}
 
 		endIndex := utils.Min(size-common.LIMIT, 100)
-		sessions := r.ZRange("recent:", 0, endIndex - 1).Val()
+		sessions := r.ZRange("recent:", 0, endIndex-1).Val()
 
 		var sessionKeys []string
 		for _, sess := range sessions {
-			sessionKeys = append(sessionKeys, "viewed:" + sess)
-			sessionKeys = append(sessionKeys, "cart:" + sess)
+			sessionKeys = append(sessionKeys, "viewed:"+sess)
+			sessionKeys = append(sessionKeys, "cart:"+sess)
 		}
 
 		r.Del(sessionKeys...)
@@ -98,27 +98,27 @@ func (r *RedisClient) CleanFullSession() {
 }
 
 //func (r *RedisClient) CacheRequest(request string, callback func(string) string) string {
-	//if ! CanCache() {
-	//	return callback(request)
-	//}
-	//
-	//pageKey := "cache:" + helper.HashRequest(request)
-	//content := r.Get(pageKey).Val()
-	//
-	//if content == "" {
-	//	content = callback(request)
-	//	r.Set(pageKey, content, 300 * time.Second)
-	//}
-	//return content
+//if ! CanCache() {
+//	return callback(request)
+//}
+//
+//pageKey := "cache:" + helper.HashRequest(request)
+//content := r.Get(pageKey).Val()
+//
+//if content == "" {
+//	content = callback(request)
+//	r.Set(pageKey, content, 300 * time.Second)
+//}
+//return content
 //}
 
 func (r *RedisClient) ScheduleRowCache(rowId string, delay int64) {
-	r.ZAdd("delay:", redis.Z{Member:rowId, Score:float64(delay)})
-	r.ZAdd("schedule:", redis.Z{Member:rowId, Score:float64(time.Now().Unix())})
+	r.ZAdd("delay:", redis.Z{Member: rowId, Score: float64(delay)})
+	r.ZAdd("schedule:", redis.Z{Member: rowId, Score: float64(time.Now().Unix())})
 }
 
 func (r *RedisClient) CacheRows() {
-	for ! common.QUIT {
+	for !common.QUIT {
 		next := r.ZRangeWithScores("schedule:", 0, 0).Val()
 		now := time.Now().Unix()
 		if next == nil || next[0].Score > float64(now) {
@@ -136,30 +136,30 @@ func (r *RedisClient) CacheRows() {
 		}
 
 		row := repository.Get(rowId) //TODO:明确到底怎么使用
-		r.ZAdd("schedule:", redis.Z{Member:rowId, Score: float64(now) + delay})
+		r.ZAdd("schedule:", redis.Z{Member: rowId, Score: float64(now) + delay})
 		jsonRow, err := json.Marshal(row)
 		if err == nil {
 			log.Fatalf("marshel json failed, data is: %v, err is: %v\n", row, err)
 		}
-		r.Set("inv:" + rowId, jsonRow, 0)
+		r.Set("inv:"+rowId, jsonRow, 0)
 	}
 }
 
 func (r *RedisClient) UpdateTokenModified(token, user string, item string) {
 	timestamp := time.Now().Unix()
 	r.HSet("login:", token, user)
-	r.ZAdd("recent:", redis.Z{Score:float64(timestamp), Member:token})
+	r.ZAdd("recent:", redis.Z{Score: float64(timestamp), Member: token})
 	if item != "" {
-		r.HSet("viewed:" + token, item, timestamp)
-		r.ZRemRangeByRank("viewed:" + token, 0, -26)
+		r.HSet("viewed:"+token, item, timestamp)
+		r.ZRemRangeByRank("viewed:"+token, 0, -26)
 		r.ZIncrBy("viewed:", -1, item)
 	}
 }
 
 func (r *RedisClient) RescaleViewed() {
-	for ! common.QUIT {
+	for !common.QUIT {
 		r.ZRemRangeByRank("viewed:", 20000, -1)
-		r.ZInterStore("viewed:", redis.ZStore{Weights:[]float64{0.5}}, "viewed:")
+		r.ZInterStore("viewed:", redis.ZStore{Weights: []float64{0.5}}, "viewed:")
 		time.Sleep(300 * time.Second)
 	}
 }
