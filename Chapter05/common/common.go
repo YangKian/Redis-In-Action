@@ -14,3 +14,8 @@ var (
 	QUIT        = false
 	SAMPLECOUNT = 100
 )
+
+var (
+	LASTCHECKED int64 = 0
+	ISUNDERMAINTENANCE = false
+)

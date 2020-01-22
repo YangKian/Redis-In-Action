@@ -6,8 +6,10 @@ import (
 	"math/rand"
 	"redisInAction/Chapter05/common"
 	"redisInAction/Chapter05/model"
+	"redisInAction/config"
 	"redisInAction/redisConn"
 	"redisInAction/utils"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -94,6 +96,42 @@ func Test(t *testing.T) {
 			t.Log(k, v)
 		}
 		utils.AssertTrue(t, rr["count"] >= 5)
+		defer client.Conn.FlushAll()
+	})
+	
+	t.Run("Test ip lookup", func(t *testing.T) {
+		t.Log("Importing IP addresses to Redis... (this may take a while)")
+		client.ImportIpsToRedis(config.FilePath + "GeoLite2-City-Blocks-IPv4.csv")
+		ranges := client.Conn.ZCard("ip2cityid:").Val()
+		t.Log("Loaded ranges into Redis:", ranges)
+		utils.AssertTrue(t, ranges > 1000)
+
+		t.Log("Importing Location lookups to Redis... (this may take a while)")
+		client.ImportCityToRedis(config.FilePath + "GeoLite2-City-Locations-en.csv")
+		cities := client.Conn.HLen("cityid2city:").Val()
+		t.Log("Loaded city lookups into Redis:", cities)
+		utils.AssertTrue(t, cities > 1000)
+
+		t.Log("Let's lookup some locations!")
+		for i := 0; i < 5; i++ {
+			ip := fmt.Sprintf("%s.%s.%s.%s",
+				strconv.Itoa(rand.Intn(254)+1), utils.RandomString(256), utils.RandomString(256),
+				utils.RandomString(256))
+			t.Log(ip, client.FindCityByIp(ip))
+		}
+		defer client.Conn.FlushAll()
+	})
+
+	t.Run("Test is under maintenance", func(t *testing.T) {
+		t.Log("Are we under maintenance (we shouldn't be)?", client.IsUnderMaintenance())
+		client.Conn.Set("is-under-maintenance", "yes", 0)
+		t.Log("We cached this, so it should be the same:", client.IsUnderMaintenance())
+		time.Sleep(2 * time.Second)
+		t.Log("But after a sleep, it should change:", client.IsUnderMaintenance())
+		t.Log("Cleaning up...")
+		client.Conn.Del("is-under-maintenance")
+		time.Sleep(2 * time.Second)
+		t.Log("Should be False again:", client.IsUnderMaintenance())
 		defer client.Conn.FlushAll()
 	})
 }

@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/go-redis/redis/v7"
 	uuid "github.com/satori/go.uuid"
@@ -241,4 +242,132 @@ func (c *Client) GetStats(context, types string) map[string]float64 {
 
 //TODO：装饰器实现上下文管理器
 
+func (c *Client) IpToScore(ip string) int64 {
+	var score int64 = 0
+	for _, v := range strings.Split(ip,".") {
+		n, _ := strconv.ParseInt(v, 10, 0)
+		score = score * 256 + n
+	}
+	return score
+}
 
+func (c *Client) ImportIpsToRedis(filename string) {
+	res := utils.CSVReader(filename)
+	pipe := c.Conn.Pipeline()
+	for count, row := range res {
+		var (
+			startIp string
+			resIP int64
+		)
+		if len(row) == 0 {
+			startIp = ""
+		} else {
+			startIp = row[0]
+		}
+		if strings.Contains(strings.ToLower(startIp), "i") {
+			continue
+		}
+		if strings.Contains(startIp, ".") {
+			resIP = c.IpToScore(startIp)
+		} else {
+			var err error
+			resIP, err =strconv.ParseInt(startIp, 10, 64)
+			if err != nil {
+				continue
+			}
+		}
+		cityID := row[2] + "_" + strconv.Itoa(count)
+		pipe.ZAdd("ip2cityid:", &redis.Z{Member:cityID, Score:float64(resIP)})
+		if (count + 1) % 1000 == 0 {
+			pipe.Exec()
+		}
+	}
+	pipe.Exec()
+}
+
+type cityInfo struct {
+	CityId string
+	Country string
+	Region string
+	City string
+}
+
+func (c *Client) ImportCityToRedis(filename string) {
+	res := utils.CSVReader(filename)
+	pipe := c.Conn.Pipeline()
+	for count, row := range res {
+		if len(row) < 4 || ! utils.IsDigital(row[0]) {
+			continue
+		}
+
+		city := cityInfo{
+			CityId: row[0],
+			Country: row[1],
+			Region:  row[2],
+			City:    row[3],
+		}
+
+		value, err := json.Marshal(city)
+		if err != nil {
+			log.Println("marshal json failed, err: ", err)
+		}
+		pipe.HSet("cityid2city:", city.CityId, value)
+		if (count + 1) % 1000 == 0 {
+			pipe.Exec()
+		}
+	}
+	pipe.Exec()
+}
+
+func (c *Client) FindCityByIp(ip string) string {
+	ipAddress := strconv.Itoa(int(c.IpToScore(ip)))
+	res := c.Conn.ZRangeByScore("ip2cityid:", &redis.ZRangeBy{Max:ipAddress, Min:"0", Offset:0, Count:2}).Val()
+	if len(res) == 0 {
+		return ""
+	}
+	cityId := strings.Split(res[0], "_")[0]
+	var result cityInfo
+	if err := json.Unmarshal([]byte(c.Conn.HGet("cityid2city:", cityId).Val()), &result); err != nil {
+		log.Fatalln("unmarshal err: ", err)
+	}
+	return strings.Join([]string{result.CityId, result.City, result.Country, result.Region}, " ")
+}
+
+func (c *Client) IsUnderMaintenance() bool {
+	if common.LASTCHECKED < time.Now().Unix() - 1 {
+		common.LASTCHECKED = time.Now().Unix()
+		common.ISUNDERMAINTENANCE = c.Conn.Get("is-under-maintenance").Val() == "yes"
+	}
+	l := common.LASTCHECKED
+	fmt.Println(l)
+	i := common.ISUNDERMAINTENANCE
+	fmt.Println(i)
+	return common.ISUNDERMAINTENANCE
+}
+
+func (c *Client) SetConfig(types, component string, config map[string]interface{}) {
+	val, err := json.Marshal(config)
+	if err != nil {
+		log.Fatalln("marshel in SetConfig err: ", err)
+	}
+	c.Conn.Set(fmt.Sprintf("config:%s:%s", types, component), val, 0)
+}
+
+func (c *Client) GetConfig(types, comonent string, wait int64) {
+	//checked := map[string]int64{}
+	//key := fmt.Sprintf("config:%s:%s", types, comonent)
+	//var ch int64
+	//config := map[string]interface{}{}
+	//if ch, ok := checked[key]; !ok || ch < time.Now().Unix() - wait {
+	//	checked[key] = time.Now().Unix()
+	//	if err := json.Unmarshal([]byte(c.Conn.Get(key).Val()), &config); err != nil {
+	//		config = nil
+	//	}
+	//	for k, v := range config {
+	//		config[k] = v
+	//	}
+	//	oldConfig :=
+	//}
+
+
+}
