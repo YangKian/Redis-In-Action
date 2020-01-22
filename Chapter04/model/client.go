@@ -45,7 +45,6 @@ func (c *Client) ListItem(itemid, sellerid string, price float64) bool {
 	return false
 }
 
-
 func (c *Client) PurchaseItem(buyerid, itemid, sellerid string, lprice int64) bool {
 	buyer := fmt.Sprintf("users:%s", buyerid)
 	seller := fmt.Sprintf("users:%s", sellerid)

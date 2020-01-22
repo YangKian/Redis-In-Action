@@ -1,6 +1,9 @@
 package utils
 
-import "testing"
+import (
+	"math/rand"
+	"testing"
+)
 
 func Min(a, b int64) int64 {
 	if a < b {
@@ -42,4 +45,8 @@ func AssertTrue(t *testing.T, v bool) {
 	if v != true {
 		t.Error("assert false but get a true value")
 	}
+}
+
+func RandomFloat(start, end float64) float64 {
+	return start + float64(rand.Int63n(int64(end - start)))
 }

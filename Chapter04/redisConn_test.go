@@ -26,11 +26,11 @@ func Test(t *testing.T) {
 		utils.AssertTrue(t, l)
 		r := client.Conn.ZRangeWithScores("market:", 0, -1).Val()
 		t.Log("The market contains:", r)
-		t.Log("The inventory: ", client.Conn.Get("inventory:" + seller).Val())
+		t.Log("The inventory: ", client.Conn.Get("inventory:"+seller).Val())
 	})
 
 	t.Run("Test purchase item", func(t *testing.T) {
-		client.ListItem("itemX", "userX",10)
+		client.ListItem("itemX", "userX", 10)
 		t.Log("We need to set up just enough state so a user can buy an item")
 		buyer := "userY"
 		client.Conn.HSet("users:userY", "funds", 125)
