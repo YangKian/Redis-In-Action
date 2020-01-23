@@ -1,7 +1,12 @@
 package utils
 
 import (
+	"encoding/csv"
+	"io"
+	"log"
 	"math/rand"
+	"os"
+	"strconv"
 	"testing"
 )
 
@@ -48,5 +53,38 @@ func AssertTrue(t *testing.T, v bool) {
 }
 
 func RandomFloat(start, end float64) float64 {
-	return start + float64(rand.Int63n(int64(end - start)))
+	return start + float64(rand.Int63n(int64(end-start)))
+}
+
+func CSVReader(filename string) [][]string {
+	csvfile, err := os.Open(filename)
+	if err != nil {
+		log.Fatalf("open file fault, filename: %s, err: %v", filename, err)
+	}
+	file := csv.NewReader(csvfile)
+	var res [][]string
+	for {
+		record, err := file.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			log.Fatalln("read csv fault, err: ", err)
+		}
+		res = append(res, record)
+	}
+	return res
+}
+
+func IsDigital(s string) bool {
+	_, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return false
+	}
+	return true
+}
+
+func RandomString(up int) string {
+	rand.Seed(rand.Int63())
+	return strconv.Itoa(rand.Intn(up))
 }

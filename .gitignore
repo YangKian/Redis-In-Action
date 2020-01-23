@@ -16,3 +16,7 @@
 
 #idea
 *.idea
+
+#other file
+*.txt
+*.csv

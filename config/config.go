@@ -5,3 +5,5 @@ var (
 	Password = ""
 	DB       = 0
 )
+
+const FilePath = "../Chapter05/GeoLite2-City-CSV_20200121/"

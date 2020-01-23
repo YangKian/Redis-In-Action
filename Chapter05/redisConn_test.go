@@ -98,7 +98,7 @@ func Test(t *testing.T) {
 		utils.AssertTrue(t, rr["count"] >= 5)
 		defer client.Conn.FlushAll()
 	})
-	
+
 	t.Run("Test ip lookup", func(t *testing.T) {
 		t.Log("Importing IP addresses to Redis... (this may take a while)")
 		client.ImportIpsToRedis(config.FilePath + "GeoLite2-City-Blocks-IPv4.csv")

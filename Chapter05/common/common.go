@@ -16,6 +16,11 @@ var (
 )
 
 var (
-	LASTCHECKED int64 = 0
-	ISUNDERMAINTENANCE = false
+	LASTCHECKED        int64 = 0
+	ISUNDERMAINTENANCE       = false
+)
+
+var (
+	CONFIG  = map[string]map[string]interface{}{}
+	CHECKED = map[string]int64{}
 )

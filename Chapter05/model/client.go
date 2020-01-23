@@ -9,6 +9,7 @@ import (
 	"math"
 	"redisInAction/Chapter05/common"
 	"redisInAction/utils"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -187,24 +188,24 @@ func (c *Client) UpdateStats(context, types string, value float64, timeout int64
 				if existing == 0 {
 					pipeliner.Set(startKey, hourStart, 0)
 				} else if existing < hourStart {
-					pipeliner.Rename(destination, destination + ":last")
-					pipeliner.Rename(startKey, destination + ":pstart")
+					pipeliner.Rename(destination, destination+":last")
+					pipeliner.Rename(startKey, destination+":pstart")
 					pipeliner.Set(startKey, hourStart, 0)
 				}
 
 				tkey1 := uuid.NewV4().String()
 				tkey2 := uuid.NewV4().String()
-				pipeliner.ZAdd(tkey1, &redis.Z{Member:"min", Score:value})
-				pipeliner.ZAdd(tkey2, &redis.Z{Member:"max", Score:value})
-				pipeliner.ZUnionStore(destination, &redis.ZStore{Aggregate:"MIN", Keys:[]string{destination, tkey1}})
-				pipeliner.ZUnionStore(destination, &redis.ZStore{Aggregate:"MAX", Keys:[]string{destination, tkey2}})
+				pipeliner.ZAdd(tkey1, &redis.Z{Member: "min", Score: value})
+				pipeliner.ZAdd(tkey2, &redis.Z{Member: "max", Score: value})
+				pipeliner.ZUnionStore(destination, &redis.ZStore{Aggregate: "MIN", Keys: []string{destination, tkey1}})
+				pipeliner.ZUnionStore(destination, &redis.ZStore{Aggregate: "MAX", Keys: []string{destination, tkey2}})
 
 				pipeliner.Del(tkey1, tkey2)
 				pipeliner.ZIncrBy(destination, 1, "count")
 				pipeliner.ZIncrBy(destination, value, "sum")
-				pipeliner.ZIncrBy(destination, value * value, "sumq")
+				pipeliner.ZIncrBy(destination, value*value, "sumq")
 				res, _ = pipeliner.Exec()
-				res = res[len(res) - 3: ]
+				res = res[len(res)-3:]
 				return nil
 			}); err != nil {
 				log.Println("pipeline filed in UpdateStats: ", err)
@@ -236,7 +237,7 @@ func (c *Client) GetStats(context, types string) map[string]float64 {
 	} else {
 		count = 1
 	}
-	stats["stddev"] = math.Pow(numerator / count, 0.5)
+	stats["stddev"] = math.Pow(numerator/count, 0.5)
 	return stats
 }
 
@@ -244,9 +245,9 @@ func (c *Client) GetStats(context, types string) map[string]float64 {
 
 func (c *Client) IpToScore(ip string) int64 {
 	var score int64 = 0
-	for _, v := range strings.Split(ip,".") {
+	for _, v := range strings.Split(ip, ".") {
 		n, _ := strconv.ParseInt(v, 10, 0)
-		score = score * 256 + n
+		score = score*256 + n
 	}
 	return score
 }
@@ -257,7 +258,7 @@ func (c *Client) ImportIpsToRedis(filename string) {
 	for count, row := range res {
 		var (
 			startIp string
-			resIP int64
+			resIP   int64
 		)
 		if len(row) == 0 {
 			startIp = ""
@@ -271,37 +272,44 @@ func (c *Client) ImportIpsToRedis(filename string) {
 			resIP = c.IpToScore(startIp)
 		} else {
 			var err error
-			resIP, err =strconv.ParseInt(startIp, 10, 64)
+			resIP, err = strconv.ParseInt(startIp, 10, 64)
 			if err != nil {
 				continue
 			}
 		}
 		cityID := row[2] + "_" + strconv.Itoa(count)
-		pipe.ZAdd("ip2cityid:", &redis.Z{Member:cityID, Score:float64(resIP)})
-		if (count + 1) % 1000 == 0 {
-			pipe.Exec()
+		pipe.ZAdd("ip2cityid:", &redis.Z{Member: cityID, Score: float64(resIP)})
+		if (count+1)%1000 == 0 {
+			if _, err := pipe.Exec(); err != nil {
+				log.Println("pipeline err in ImportIpsToRedis: ", err)
+				return
+			}
 		}
 	}
-	pipe.Exec()
+
+	if _, err := pipe.Exec(); err != nil {
+		log.Println("pipeline err in ImportIpsToRedis: ", err)
+		return
+	}
 }
 
 type cityInfo struct {
-	CityId string
+	CityId  string
 	Country string
-	Region string
-	City string
+	Region  string
+	City    string
 }
 
 func (c *Client) ImportCityToRedis(filename string) {
 	res := utils.CSVReader(filename)
 	pipe := c.Conn.Pipeline()
 	for count, row := range res {
-		if len(row) < 4 || ! utils.IsDigital(row[0]) {
+		if len(row) < 4 || !utils.IsDigital(row[0]) {
 			continue
 		}
 
 		city := cityInfo{
-			CityId: row[0],
+			CityId:  row[0],
 			Country: row[1],
 			Region:  row[2],
 			City:    row[3],
@@ -312,16 +320,23 @@ func (c *Client) ImportCityToRedis(filename string) {
 			log.Println("marshal json failed, err: ", err)
 		}
 		pipe.HSet("cityid2city:", city.CityId, value)
-		if (count + 1) % 1000 == 0 {
-			pipe.Exec()
+		if (count+1)%1000 == 0 {
+			if _, err := pipe.Exec(); err != nil {
+				log.Println("pipeline err in ImportCityToRedis: ", err)
+				return
+			}
 		}
 	}
-	pipe.Exec()
+
+	if _, err := pipe.Exec(); err != nil {
+		log.Println("pipeline err in ImportCityToRedis: ", err)
+		return
+	}
 }
 
 func (c *Client) FindCityByIp(ip string) string {
 	ipAddress := strconv.Itoa(int(c.IpToScore(ip)))
-	res := c.Conn.ZRangeByScore("ip2cityid:", &redis.ZRangeBy{Max:ipAddress, Min:"0", Offset:0, Count:2}).Val()
+	res := c.Conn.ZRangeByScore("ip2cityid:", &redis.ZRangeBy{Max: ipAddress, Min: "0", Offset: 0, Count: 2}).Val()
 	if len(res) == 0 {
 		return ""
 	}
@@ -334,7 +349,7 @@ func (c *Client) FindCityByIp(ip string) string {
 }
 
 func (c *Client) IsUnderMaintenance() bool {
-	if common.LASTCHECKED < time.Now().Unix() - 1 {
+	if common.LASTCHECKED < time.Now().Unix()-1 {
 		common.LASTCHECKED = time.Now().Unix()
 		common.ISUNDERMAINTENANCE = c.Conn.Get("is-under-maintenance").Val() == "yes"
 	}
@@ -353,21 +368,22 @@ func (c *Client) SetConfig(types, component string, config map[string]interface{
 	c.Conn.Set(fmt.Sprintf("config:%s:%s", types, component), val, 0)
 }
 
-func (c *Client) GetConfig(types, comonent string, wait int64) {
-	//checked := map[string]int64{}
-	//key := fmt.Sprintf("config:%s:%s", types, comonent)
-	//var ch int64
-	//config := map[string]interface{}{}
-	//if ch, ok := checked[key]; !ok || ch < time.Now().Unix() - wait {
-	//	checked[key] = time.Now().Unix()
-	//	if err := json.Unmarshal([]byte(c.Conn.Get(key).Val()), &config); err != nil {
-	//		config = nil
-	//	}
-	//	for k, v := range config {
-	//		config[k] = v
-	//	}
-	//	oldConfig :=
-	//}
-
-
+func (c *Client) GetConfig(types, comonent string, wait int64) map[string]interface{} {
+	key := fmt.Sprintf("config:%s:%s", types, comonent)
+	ch, ok := common.CHECKED[key]
+	if !ok || ch < time.Now().Unix()-wait {
+		common.CHECKED[key] = time.Now().Unix()
+		config := map[string]interface{}{}
+		if err := json.Unmarshal([]byte(c.Conn.Get(key).Val()), &config); err != nil {
+			config = map[string]interface{}{}
+			return nil
+		}
+		oldConfig := common.CONFIG[key]
+		if !reflect.DeepEqual(oldConfig, config) {
+			common.CONFIG[key] = config
+		}
+	}
+	return common.CONFIG[key]
 }
+
+//TODO:装饰器模式实现连接管理
