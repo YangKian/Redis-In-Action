@@ -2,10 +2,12 @@ package main
 
 import (
 	"fmt"
+	"redisInAction/Chapter06/common"
 	"redisInAction/Chapter06/model"
 	"redisInAction/redisConn"
 	"redisInAction/utils"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -121,6 +123,39 @@ func Test(t *testing.T) {
 		}
 		t.Log("We got them!")
 		defer client.Conn.FlushAll()
+	})
+
+	t.Run("Test delayed tasks", func(t *testing.T) {
+		t.Log("Let's start some regular and delayed tasks...")
+		for _, delay := range []float64{0, 0.5, 0, 1.5} {
+			utils.AssertTrue(t, client.ExecuteLater("tqueue", "testfn", nil, delay) != "")
+		}
+		r := client.Conn.LLen("queue:tqueue").Val()
+		t.Log("How many non-delayed tasks are there (should be 2)?", r)
+		utils.AssertnumResult(t, 2, r)
+		t.Log("Let's start up a thread to bring those delayed tasks back...")
+		channel := make(chan struct{})
+		go client.PollQueue(channel)
+		t.Log("Started.")
+		t.Log("Let's wait for those tasks to be prepared...")
+		time.Sleep(2 * time.Second)
+		common.QUIT = true
+		<- channel
+		r = client.Conn.LLen("queue:tqueue").Val()
+		t.Log("Waiting is over, how many tasks do we have (should be 4)?", r)
+		utils.AssertnumResult(t, 4, r)
+		defer client.Conn.FlushAll()
+	})
+
+	t.Run("Test multi recipient messaging", func(t *testing.T) {
+		t.Log("Let's create a new chat session with some recipients...")
+		chatId := client.CreateChat("joe", &[]string{"jeff", "jenny"}, "message 1", "")
+		t.Log("Now let's send a few messages...")
+		for i := 2; i < 5; i++ {
+			client.SendMessage(chatId, "joe", fmt.Sprintf("message %s", strconv.Itoa(i)))
+		}
+		t.Log("And let's get the messages that are waiting for jeff and jenny...")
+		//client.FetchPendingMessage("jeff")
 	})
 }
 

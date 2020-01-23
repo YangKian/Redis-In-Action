@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/go-redis/redis/v7"
 	uuid "github.com/satori/go.uuid"
@@ -72,14 +73,14 @@ func (c *Client) AutoCompleteOnPrefix(guild, prefix string) []string {
 			eindex := tx.ZRank(zsetName, end).Val()
 			erange := utils.Min(sindex + 9, eindex - 2)
 			pipeline.ZRem(zsetName, start, end)
-			pipeline.ZRange(zsetName, sindex, erange)
+			var tmp *redis.StringSliceCmd
+			tmp = pipeline.ZRange(zsetName, sindex, erange)
 			_, err := pipeline.Exec()
 			if err != nil {
 				log.Println("pipeline err in AutoCompleteOnPrefix: ", err)
 				return err
 			}
-			//TODO: 有更好的方法来获取值么
-			res := tx.ZRange(zsetName, sindex, erange).Val()
+			res := tmp.Val()
 			if len(res) != 0 {
 				items = res
 			}
@@ -224,14 +225,16 @@ func (c *Client) AcquireSemaphore(semname string, limit int64, timeout int64) st
 	identifier := uuid.NewV4().String()
 	now := time.Now().Unix()
 
+	var res *redis.IntCmd
 	pipeline := c.Conn.TxPipeline()
 	pipeline.ZRemRangeByScore(semname, "-inf", strconv.Itoa(int(now-timeout)))
 	pipeline.ZAdd(semname, &redis.Z{Member:identifier, Score:float64(now)})
+	res = pipeline.ZRank(semname, identifier)
 	_, err := pipeline.Exec()
 	if err != nil {
 		log.Println("pipeline err in AcquireSemaphore: ", err)
 	}
-	if c.Conn.ZRank(semname, identifier).Val() < limit {
+	if res.Val() < limit {
 		return identifier
 	}
 
@@ -306,3 +309,193 @@ func (c *Client) AcquireSemaphoreWithLock(semname string, limit int64, timeout i
 	defer c.ReleaseLock(semname, identifier)
 	return ""
 }
+
+type soldData struct {
+	SellerId string
+	ItemId string
+	Price string
+	BuyerId string
+	Time int64
+}
+func (c *Client) SendSoldEmailViaQueue(seller, item, price, buyer string) {
+	data := soldData{
+		SellerId: seller,
+		ItemId:   item,
+		Price:    price,
+		BuyerId:  buyer,
+		Time:     time.Now().Unix(),
+	}
+	jsonValue, err := json.Marshal(data)
+	if err != nil {
+		log.Println("marshal err in SendSoldEmailViaQueue: ", err)
+		return
+	}
+	c.Conn.RPush("queue:email", jsonValue)
+}
+
+func (c *Client) ProcessSoldEmailQueue() {
+	for ! common.QUIT {
+		packed := c.Conn.BLPop(30 * time.Second, "queue:email").Val()
+		if len(packed) == 0 {
+			continue
+		}
+
+		toSend := soldData{}
+		if err := json.Unmarshal([]byte(packed[0]), &toSend); err != nil {
+			log.Println("unmarshal err in ProcessSoldEmailQueue: ", err)
+			return
+		}
+
+		SendEmail()
+	}
+}
+
+func SendEmail() {}
+
+type info struct {
+	Identifier string
+	Queue string
+	Name string
+	Args []string
+}
+
+func (c *Client) ExecuteLater(queue, name string, args []string, delay float64) string {
+	identifier := uuid.NewV4().String()
+	data := info{
+		Identifier: identifier,
+		Queue:      queue,
+		Name:       name,
+		Args:       args,
+	}
+
+	item, err := json.Marshal(data)
+	if err != nil {
+		log.Println("marshal err in ExecuteLater: ", err)
+		return ""
+	}
+
+	if delay > 0 {
+		c.Conn.ZAdd("delayed:", &redis.Z{Member:item, Score:float64(time.Now().UnixNano() + int64(delay * 1e9))})
+	} else {
+		c.Conn.RPush("queue:" + queue, item)
+	}
+	return identifier
+}
+
+func (c *Client) PollQueue(channel chan struct{}) {
+	for ! common.QUIT {
+		item := c.Conn.ZRangeWithScores("delayed:", 0, 0).Val()
+		if len(item) == 0 || int64(item[0].Score) > time.Now().UnixNano() {
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+
+		res := item[0].Member.(string)
+		data := info{}
+		if err := json.Unmarshal([]byte(res), &data); err != nil {
+			log.Println("unmarshal err in PollQueue: ", err)
+			channel <- struct{}{}
+			return
+		}
+
+		locked := c.AcquireLock(data.Identifier, 10)
+		if locked == "" {
+			continue
+		}
+
+		if c.Conn.ZRem("delayed:", res).Val() != 0 {
+			c.Conn.RPush("queue:" + data.Queue, res)
+		}
+
+		c.ReleaseLock(data.Identifier, locked)
+	}
+
+	channel <- struct{}{}
+}
+
+func (c *Client) CreateChat(sender string, recipients *[]string, message string, chatId string) string {
+	if chatId == "" {
+		chatId = strconv.Itoa(int(c.Conn.Incr("ids:chat:").Val()))
+	}
+
+	*recipients = append(*recipients, sender)
+	var recipientsd []*redis.Z
+	for _, r := range *recipients {
+		temp := redis.Z{
+			Score:  0,
+			Member: r,
+		}
+		recipientsd = append(recipientsd, &temp)
+	}
+
+	pipeline := c.Conn.TxPipeline()
+	pipeline.ZAdd("chat:" + chatId, recipientsd...)
+	for _, rec := range *recipients {
+		pipeline.ZAdd("seen:" + rec, &redis.Z{Member:chatId, Score:0})
+	}
+	if _, err := pipeline.Exec(); err != nil {
+		log.Println("pipeline err in CreateChat: ", err)
+	}
+	return c.SendMessage(chatId, sender, message)
+}
+
+type pack struct {
+	Id int64
+	Ts int64
+	Sender string
+	Message string
+}
+
+func (c *Client) SendMessage(chatId, sender, message string) string {
+	identifier := c.AcquireLock("chat:" + chatId, 10)
+	if identifier == "" {
+		log.Println("Couldn't get the lock")
+		return ""
+	}
+
+	mid := c.Conn.Incr("ids:" + chatId).Val()
+	ts := time.Now().Unix()
+	packed := pack{
+		Id:      mid,
+		Ts:      ts,
+		Sender:  sender,
+		Message: message,
+	}
+
+	jsonValue, err := json.Marshal(packed)
+	if err != nil {
+		log.Println("marshal err in SendMessage: ", err)
+	}
+
+	c.Conn.ZAdd("msgs:" + chatId, &redis.Z{Member:jsonValue, Score:float64(mid)})
+	defer c.ReleaseLock("chat:" + chatId, identifier)
+	return chatId
+}
+
+//TODO: 怎么实现 FetchPendingMessage
+//func (c *Client) FetchPendingMessage(recipient string) {
+//	seen := c.Conn.ZRangeWithScores("seen:" + recipient, 0, -1).Val()
+//	pipeline := c.Conn.TxPipeline()
+//
+//	var res *redis.StringSliceCmd
+//	length := len(seen)
+//	temp := make([]string, 0, length)
+//	for _, v := range seen {
+//		chatId := v.Member.(string)
+//		seenId := v.Score
+//		res = pipeline.ZRangeByScore("msgs:" + chatId, &redis.ZRangeBy{Min:strconv.Itoa(int(seenId + 1)), Max:"inf"})
+//		temp = append(temp, chatId, strconv.Itoa(int(seenId)))
+//	}
+//
+//	if _, err := pipeline.Exec(); err != nil {
+//		log.Println("pipeline err in FetchPendingMessage: ", err)
+//		return
+//	}
+//	chatInfo := [][]string{temp, res.Val()}
+//
+//	for i, v := range chatInfo {
+//
+//	}
+//
+//
+//}
