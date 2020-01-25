@@ -16,11 +16,11 @@ import (
 func Test(t *testing.T) {
 	conn := redisConn.ConnectRedis()
 	client := model.NewClient(conn)
-	
+
 	t.Run("Test add update contact", func(t *testing.T) {
 		t.Log("Let's add a few contacts...")
 		for i := 0; i < 10; i++ {
-			client.AddUpdateContact("user", fmt.Sprintf("contact-%d-%d", i / 3, i))
+			client.AddUpdateContact("user", fmt.Sprintf("contact-%d-%d", i/3, i))
 		}
 		t.Log("Current recently contacted contacts")
 		contacts := client.Conn.LRange("recent:user", 0, -1).Val()
@@ -63,7 +63,7 @@ func Test(t *testing.T) {
 	})
 
 	t.Run("Test address book autocomplete", func(t *testing.T) {
-		t.Log("the start/end range of 'abc' is:",)
+		t.Log("the start/end range of 'abc' is:")
 		start, end := client.FindPrefixRange("abc")
 		t.Log(start, end)
 
@@ -140,7 +140,7 @@ func Test(t *testing.T) {
 		t.Log("Let's wait for those tasks to be prepared...")
 		time.Sleep(2 * time.Second)
 		common.QUIT = true
-		<- channel
+		<-channel
 		r = client.Conn.LLen("queue:tqueue").Val()
 		t.Log("Waiting is over, how many tasks do we have (should be 4)?", r)
 		utils.AssertnumResult(t, 4, r)
@@ -158,5 +158,3 @@ func Test(t *testing.T) {
 		//client.FetchPendingMessage("jeff")
 	})
 }
-
-

@@ -34,11 +34,11 @@ func (c *Client) AddUpdateContact(user, contact string) {
 }
 
 func (c *Client) RemoveContact(user, contact string) {
-	c.Conn.LRem("recent:" + user, 1, contact)
+	c.Conn.LRem("recent:"+user, 1, contact)
 }
 
 func (c *Client) FetchAutoCompleteList(user, prefix string) []string {
-	candidates := c.Conn.LRange("recent:" + user, 0, -1).Val()
+	candidates := c.Conn.LRange("recent:"+user, 0, -1).Val()
 	var matches []string
 	for _, candidate := range candidates {
 		if strings.HasPrefix(strings.ToLower(candidate), strings.ToLower(prefix)) {
@@ -49,12 +49,12 @@ func (c *Client) FetchAutoCompleteList(user, prefix string) []string {
 }
 
 func (c *Client) FindPrefixRange(prefix string) (string, string) {
-	posn := strings.IndexByte(common.ValidCharacters, prefix[len(prefix) - 1])
+	posn := strings.IndexByte(common.ValidCharacters, prefix[len(prefix)-1])
 	if posn == 0 {
 		posn = 1
 	}
-	suffix := string(common.ValidCharacters[posn - 1])
-	return prefix[: len(prefix) - 1] + suffix + "{", prefix + "{"
+	suffix := string(common.ValidCharacters[posn-1])
+	return prefix[:len(prefix)-1] + suffix + "{", prefix + "{"
 }
 
 func (c *Client) AutoCompleteOnPrefix(guild, prefix string) []string {
@@ -65,13 +65,13 @@ func (c *Client) AutoCompleteOnPrefix(guild, prefix string) []string {
 	zsetName := "members:" + guild
 
 	var items []string
-	c.Conn.ZAdd(zsetName, &redis.Z{Member:start, Score:0}, &redis.Z{Member:end, Score:0})
+	c.Conn.ZAdd(zsetName, &redis.Z{Member: start, Score: 0}, &redis.Z{Member: end, Score: 0})
 	for {
 		err := c.Conn.Watch(func(tx *redis.Tx) error {
 			pipeline := tx.TxPipeline()
 			sindex := tx.ZRank(zsetName, start).Val()
 			eindex := tx.ZRank(zsetName, end).Val()
-			erange := utils.Min(sindex + 9, eindex - 2)
+			erange := utils.Min(sindex+9, eindex-2)
 			pipeline.ZRem(zsetName, start, end)
 			var tmp *redis.StringSliceCmd
 			tmp = pipeline.ZRange(zsetName, sindex, erange)
@@ -101,19 +101,19 @@ func (c *Client) AutoCompleteOnPrefix(guild, prefix string) []string {
 }
 
 func (c *Client) JoinGuild(guild, user string) {
-	c.Conn.ZAdd("members:" + guild, &redis.Z{Member:user, Score:0})
+	c.Conn.ZAdd("members:"+guild, &redis.Z{Member: user, Score: 0})
 }
 
 func (c *Client) LeaveGuild(guild, user string) {
-	c.Conn.ZRem("members:" + guild, user)
+	c.Conn.ZRem("members:"+guild, user)
 }
 
 func (c *Client) AcquireLock(lockname string, acquireTimeout float64) string {
 	identifier := uuid.NewV4().String()
 
-	end := time.Now().UnixNano() + int64(acquireTimeout * 1e6)
+	end := time.Now().UnixNano() + int64(acquireTimeout*1e6)
 	for time.Now().UnixNano() < end {
-		if c.Conn.SetNX("lock:" + lockname, identifier, 0).Val() {
+		if c.Conn.SetNX("lock:"+lockname, identifier, 0).Val() {
 			return identifier
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -135,9 +135,9 @@ func (c *Client) PurchaseItemWithLock(buyerId, itemId, sellerId string) bool {
 
 	var (
 		price float64
-		temp string
+		temp  string
 		funds float64
-		err error
+		err   error
 	)
 	//TODO：怎么样在pipeline中获取值，不使用tx的话
 	if err := c.Conn.Watch(func(tx *redis.Tx) error {
@@ -173,7 +173,7 @@ func (c *Client) PurchaseItemWithLock(buyerId, itemId, sellerId string) bool {
 
 func (c *Client) ReleaseLock(lockname, identifier string) bool {
 	lockname = "lock:" + lockname
-	var flag  = true
+	var flag = true
 	for flag {
 		err := c.Conn.Watch(func(tx *redis.Tx) error {
 			pipe := tx.TxPipeline()
@@ -196,7 +196,7 @@ func (c *Client) ReleaseLock(lockname, identifier string) bool {
 			return false
 		}
 
-		if ! flag {
+		if !flag {
 			break
 		}
 	}
@@ -208,13 +208,13 @@ func (c *Client) AcquireLockWithTimeout(lockname string, acquireTimeout, lockTim
 	lockname = "lock:" + lockname
 	finalLockTimeout := math.Ceil(lockTimeout)
 
-	end := time.Now().UnixNano() + int64(acquireTimeout * 1e9)
+	end := time.Now().UnixNano() + int64(acquireTimeout*1e9)
 	for time.Now().UnixNano() < end {
 		if c.Conn.SetNX(lockname, identifier, 0).Val() {
-			c.Conn.Expire(lockname, time.Duration(finalLockTimeout) * time.Second)
+			c.Conn.Expire(lockname, time.Duration(finalLockTimeout)*time.Second)
 			return identifier
 		} else if c.Conn.TTL(lockname).Val() < 0 {
-			c.Conn.Expire(lockname, time.Duration(finalLockTimeout) * time.Second)
+			c.Conn.Expire(lockname, time.Duration(finalLockTimeout)*time.Second)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -228,7 +228,7 @@ func (c *Client) AcquireSemaphore(semname string, limit int64, timeout int64) st
 	var res *redis.IntCmd
 	pipeline := c.Conn.TxPipeline()
 	pipeline.ZRemRangeByScore(semname, "-inf", strconv.Itoa(int(now-timeout)))
-	pipeline.ZAdd(semname, &redis.Z{Member:identifier, Score:float64(now)})
+	pipeline.ZAdd(semname, &redis.Z{Member: identifier, Score: float64(now)})
 	res = pipeline.ZRank(semname, identifier)
 	_, err := pipeline.Exec()
 	if err != nil {
@@ -254,15 +254,15 @@ func (c *Client) AcquireFairSemaphore(semname string, limit, timeout int64) stri
 	now := time.Now().Unix()
 	pipeline := c.Conn.TxPipeline()
 	pipeline.ZRemRangeByScore(semname, "-inf", strconv.Itoa(int(now-timeout)))
-	pipeline.ZInterStore(czset, &redis.ZStore{Keys:[]string{czset, semname}, Weights:[]float64{1, 0}})
+	pipeline.ZInterStore(czset, &redis.ZStore{Keys: []string{czset, semname}, Weights: []float64{1, 0}})
 	if _, err := pipeline.Exec(); err != nil {
 		log.Println("pipeline err in AcquireFairSemaphore: ", err)
 		return ""
 	}
 	counter := c.Conn.Incr(ctr).Val()
 
-	pipeline.ZAdd(semname, &redis.Z{Member:identifier, Score:float64(now)})
-	pipeline.ZAdd(czset, &redis.Z{Member:identifier, Score:float64(counter)})
+	pipeline.ZAdd(semname, &redis.Z{Member: identifier, Score: float64(now)})
+	pipeline.ZAdd(czset, &redis.Z{Member: identifier, Score: float64(counter)})
 	if _, err := pipeline.Exec(); err != nil {
 		log.Println("pipeline err in AcquireFairSemaphore: ", err)
 		return ""
@@ -285,7 +285,7 @@ func (c *Client) AcquireFairSemaphore(semname string, limit, timeout int64) stri
 func (c *Client) ReleaseFairSemaphore(semname, identifier string) bool {
 	pipeline := c.Conn.TxPipeline()
 	pipeline.ZRem(semname, identifier)
-	pipeline.ZRem(semname + ":owner", identifier)
+	pipeline.ZRem(semname+":owner", identifier)
 	if _, err := pipeline.Exec(); err != nil {
 		log.Println("pipeline err in ReleaseFairSemaphore: ", err)
 		return false
@@ -294,7 +294,7 @@ func (c *Client) ReleaseFairSemaphore(semname, identifier string) bool {
 }
 
 func (c *Client) RefreshFairSemaphore(semname, identifier string) bool {
-	if c.Conn.ZAdd(semname, &redis.Z{Member:identifier, Score:float64(time.Now().Unix())}).Val() != 0 {
+	if c.Conn.ZAdd(semname, &redis.Z{Member: identifier, Score: float64(time.Now().Unix())}).Val() != 0 {
 		c.ReleaseFairSemaphore(semname, identifier)
 		return false
 	}
@@ -312,11 +312,12 @@ func (c *Client) AcquireSemaphoreWithLock(semname string, limit int64, timeout i
 
 type soldData struct {
 	SellerId string
-	ItemId string
-	Price string
-	BuyerId string
-	Time int64
+	ItemId   string
+	Price    string
+	BuyerId  string
+	Time     int64
 }
+
 func (c *Client) SendSoldEmailViaQueue(seller, item, price, buyer string) {
 	data := soldData{
 		SellerId: seller,
@@ -334,8 +335,8 @@ func (c *Client) SendSoldEmailViaQueue(seller, item, price, buyer string) {
 }
 
 func (c *Client) ProcessSoldEmailQueue() {
-	for ! common.QUIT {
-		packed := c.Conn.BLPop(30 * time.Second, "queue:email").Val()
+	for !common.QUIT {
+		packed := c.Conn.BLPop(30*time.Second, "queue:email").Val()
 		if len(packed) == 0 {
 			continue
 		}
@@ -354,9 +355,9 @@ func SendEmail() {}
 
 type info struct {
 	Identifier string
-	Queue string
-	Name string
-	Args []string
+	Queue      string
+	Name       string
+	Args       []string
 }
 
 func (c *Client) ExecuteLater(queue, name string, args []string, delay float64) string {
@@ -375,15 +376,15 @@ func (c *Client) ExecuteLater(queue, name string, args []string, delay float64) 
 	}
 
 	if delay > 0 {
-		c.Conn.ZAdd("delayed:", &redis.Z{Member:item, Score:float64(time.Now().UnixNano() + int64(delay * 1e9))})
+		c.Conn.ZAdd("delayed:", &redis.Z{Member: item, Score: float64(time.Now().UnixNano() + int64(delay*1e9))})
 	} else {
-		c.Conn.RPush("queue:" + queue, item)
+		c.Conn.RPush("queue:"+queue, item)
 	}
 	return identifier
 }
 
 func (c *Client) PollQueue(channel chan struct{}) {
-	for ! common.QUIT {
+	for !common.QUIT {
 		item := c.Conn.ZRangeWithScores("delayed:", 0, 0).Val()
 		if len(item) == 0 || int64(item[0].Score) > time.Now().UnixNano() {
 			time.Sleep(100 * time.Millisecond)
@@ -404,7 +405,7 @@ func (c *Client) PollQueue(channel chan struct{}) {
 		}
 
 		if c.Conn.ZRem("delayed:", res).Val() != 0 {
-			c.Conn.RPush("queue:" + data.Queue, res)
+			c.Conn.RPush("queue:"+data.Queue, res)
 		}
 
 		c.ReleaseLock(data.Identifier, locked)
@@ -429,9 +430,9 @@ func (c *Client) CreateChat(sender string, recipients *[]string, message string,
 	}
 
 	pipeline := c.Conn.TxPipeline()
-	pipeline.ZAdd("chat:" + chatId, recipientsd...)
+	pipeline.ZAdd("chat:"+chatId, recipientsd...)
 	for _, rec := range *recipients {
-		pipeline.ZAdd("seen:" + rec, &redis.Z{Member:chatId, Score:0})
+		pipeline.ZAdd("seen:"+rec, &redis.Z{Member: chatId, Score: 0})
 	}
 	if _, err := pipeline.Exec(); err != nil {
 		log.Println("pipeline err in CreateChat: ", err)
@@ -440,14 +441,14 @@ func (c *Client) CreateChat(sender string, recipients *[]string, message string,
 }
 
 type pack struct {
-	Id int64
-	Ts int64
-	Sender string
+	Id      int64
+	Ts      int64
+	Sender  string
 	Message string
 }
 
 func (c *Client) SendMessage(chatId, sender, message string) string {
-	identifier := c.AcquireLock("chat:" + chatId, 10)
+	identifier := c.AcquireLock("chat:"+chatId, 10)
 	if identifier == "" {
 		log.Println("Couldn't get the lock")
 		return ""
@@ -467,8 +468,8 @@ func (c *Client) SendMessage(chatId, sender, message string) string {
 		log.Println("marshal err in SendMessage: ", err)
 	}
 
-	c.Conn.ZAdd("msgs:" + chatId, &redis.Z{Member:jsonValue, Score:float64(mid)})
-	defer c.ReleaseLock("chat:" + chatId, identifier)
+	c.Conn.ZAdd("msgs:"+chatId, &redis.Z{Member: jsonValue, Score: float64(mid)})
+	defer c.ReleaseLock("chat:"+chatId, identifier)
 	return chatId
 }
 

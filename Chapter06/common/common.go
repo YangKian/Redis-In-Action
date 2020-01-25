@@ -1,5 +1,5 @@
 package common
 
-const ValidCharacters  = "`abcdefghijklmnopqrstuvwxyz{"
+const ValidCharacters = "`abcdefghijklmnopqrstuvwxyz{"
 
 var QUIT = false
