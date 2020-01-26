@@ -23,3 +23,5 @@ var (
 var CONTENT = "this is some random content, look at how it is indexed."
 
 var AVERAGEPER1K = map[string]float64{}
+
+const SKILLLEVELLIMIT = 2

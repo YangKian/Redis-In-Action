@@ -322,7 +322,6 @@ func toECPM(types string, views, avg, value float64) float64 {
 func (c *Client) TargetAds(locations []string, content string) (string, string) {
 	matchedAds, baseEcpm := c.matchLocation(&locations)
 	words, targetedAds := c.finishScoring(matchedAds, baseEcpm, content)
-	//_, targetedAds := c.finishScoring(matchedAds, baseEcpm, content)
 
 	pipeline := c.Conn.TxPipeline()
 	tempAd := &redis.StringSliceCmd{}
@@ -431,13 +430,15 @@ func (c *Client) UpdateCpms(adId string) {
 	pipeline.Get(fmt.Sprintf("type:%s:views:", types))
 	pipeline.Get(fmt.Sprintf("type:%s:%s:", types, which))
 	res, err = pipeline.Exec()
+	//TODO：100次展示会触发更新，此时没有触发过点击，所以type:cpc:clicks:会返回 redis:nil，该怎么处理？
 	if err != nil {
-		fmt.Println(res) //TODO：bug here
+		//fmt.Println(res)
 		log.Println("pipeline err in UpdateCpms: ", err)
-		return
+		//return
 	}
 	typeViews, _ := res[0].(*redis.StringCmd).Int()
 	typeClicks, _ := res[1].(*redis.StringCmd).Int()
+
 
 	if typeViews == 0 {
 		typeViews = 1
@@ -534,4 +535,118 @@ func (c *Client) RecordClick(targetId, adId string, action bool) {
 	}
 
 	c.UpdateCpms(adId)
+}
+
+func (c *Client) AddJob(jodId string, requireSkills []string) {
+	c.Conn.SAdd("job:" + jodId, requireSkills)
+}
+
+func (c *Client) IsQualified(jobId string, candidateSkills []string) []string {
+	var res *redis.StringSliceCmd
+	temp := uuid.NewV4().String()
+	pipline := c.Conn.TxPipeline()
+	pipline.SAdd(temp, candidateSkills)
+	pipline.Expire(temp, 5 * time.Second)
+	res = pipline.SDiff("job:" + jobId, temp)
+	if _, err := pipline.Exec(); err != nil {
+		log.Println("pipeline err in RecordClick: ", err)
+		return nil
+	}
+	return res.Val()
+}
+
+func (c *Client) IndexJob(jobId string, skills []string) {
+	countSkill := utils.Set{}
+	pipeline := c.Conn.TxPipeline()
+	for _, skill := range skills {
+		pipeline.SAdd("idx:skill:" + skill, jobId)
+		countSkill.Add(skill)
+	}
+	pipeline.ZAdd("idx:jobs:req", &redis.Z{Member:jobId, Score:float64(len(countSkill))})
+	if _, err := pipeline.Exec(); err != nil {
+		log.Println("pipeline err in RecordClick: ", err)
+		return
+	}
+}
+
+func (c *Client) FindJobs(candidateSkills []string) []string {
+	skills := map[string]float64{}
+	for _, skill := range candidateSkills {
+		skills["skill:" + skill] = 1
+	}
+	jobScores := c.ZUnion(skills, 30, "")
+	finalResult := c.Zintersect(map[string]float64{jobScores:-1, "jobs:req":1}, 30, "")
+	return c.Conn.ZRangeByScore("idx:" + finalResult, &redis.ZRangeBy{Max:"0", Min:"0"}).Val()
+}
+
+func (c *Client) IndexJobLevels(jobId string, skillLevels map[string]int64) {
+	totalSkills := utils.Set{}
+	pipeline := c.Conn.TxPipeline()
+	for skill, level := range skillLevels {
+		totalSkills.Add(skill)
+		level := utils.Min(level, common.SKILLLEVELLIMIT)
+		for wlevel := level; wlevel < common.SKILLLEVELLIMIT + 1; wlevel++ {
+			pipeline.SAdd(fmt.Sprintf("idx:skill:%s:%s", skill, strconv.Itoa(int(wlevel))), jobId)
+		}
+	}
+	pipeline.ZAdd("idx:jobs:req", &redis.Z{Member:jobId, Score:float64(len(totalSkills))})
+	if _, err := pipeline.Exec(); err != nil {
+		log.Println("pipeline err in IndexJobLevels: ", err)
+		return
+	}
+}
+
+func (c *Client) SearchJobLevels(skillLevels map[string]int64) []string {
+	skills := map[string]float64{}
+	for skill, level := range skillLevels {
+		level = utils.Min(level, common.SKILLLEVELLIMIT)
+		skills[fmt.Sprintf("skill:%s:%s", skill, strconv.Itoa(int(level)))] = 1
+	}
+	jobScores := c.ZUnion(skills, 30, "")
+	finalResult := c.Zintersect(map[string]float64{jobScores:-1, "jobs:req":1}, 30, "")
+	return c.Conn.ZRangeByScore("idx:" + finalResult, &redis.ZRangeBy{Min:"-inf", Max:"0"}).Val()
+}
+
+func (c *Client) IndexJobYears(jobId string, skillYears map[string]int64) {
+	totalSkills := utils.Set{}
+	pipeline := c.Conn.TxPipeline()
+	for skill, years := range skillYears {
+		totalSkills.Add(skill)
+		pipeline.ZAdd(fmt.Sprintf("idx:skill:%s:years", skill),
+			&redis.Z{Member:jobId, Score:float64(utils.Max(years, 0))})
+	}
+	pipeline.SAdd("idx:jobs:all", jobId)
+	pipeline.ZAdd("idx:jobs:req", &redis.Z{Member:jobId, Score:float64(len(totalSkills))})
+	if _, err := pipeline.Exec(); err != nil {
+		log.Println("pipeline err in IndexJobLevels: ", err)
+		return
+	}
+}
+
+func (c *Client) SearchJobYears(skillyears map[string]int64) []string {
+	pipeline := c.Conn.TxPipeline()
+	union := []string{}
+	for skill, years := range skillyears {
+		subResult := c.Zintersect(map[string]float64{"jobs:all":float64(-years),
+			fmt.Sprintf("skill:%s:years", skill):1}, 30, "")
+		pipeline.ZRemRangeByScore("idx:" + subResult, "(0", "inf")
+		union = append(union, c.Zintersect(map[string]float64{"jobs:all":1, subResult:0}, 30, ""))
+	}
+
+	unionmap := make(map[string]float64, len(union))
+	for _, v := range union {
+		unionmap[v] = 1
+	}
+
+	jobScores := c.ZUnion(unionmap, 30, "")
+	finalResult := c.Zintersect(map[string]float64{jobScores:-1, "jobs:req":1}, 30, "")
+	var res *redis.StringSliceCmd
+	res = pipeline.ZRangeByScore("idx:" + finalResult, &redis.ZRangeBy{Min:"-inf", Max:"0"})
+	rrr, err := pipeline.Exec()
+	if err != nil {
+		log.Println("pipeline err in IndexJobLevels: ", err)
+		return nil
+	}
+	fmt.Println(rrr)
+	return res.Val()
 }

@@ -182,12 +182,82 @@ func Test(t *testing.T) {
 		for _, v := range client.Conn.ZRangeWithScores("idx:ad:value:", 0, -1).Val() {
 			res[v.Member.(string)] = v.Score
 		}
+		fmt.Println("res 185 ", res)
 		utils.AssertTrue(t, reflect.DeepEqual(res, map[string]float64{"2": 0.125, "1":2.5}))
 		for _, v := range client.Conn.ZRangeWithScores("ad:baseValue:value:", 0, -1).Val() {
 			res[v.Member.(string)] = v.Score
 		}
+		fmt.Println("res 191 ", res) //TODO:测试结果不正确
 		utils.AssertTrue(t, reflect.DeepEqual(res, map[string]float64{"2": 0.125, "1":0.25}))
 
-		//defer client.Conn.FlushAll()
+		defer client.Conn.FlushAll()
+	})
+
+	t.Run("Test is qualified for job", func(t *testing.T) {
+		client.AddJob("test", []string{"q1", "q2", "q3"})
+		res := client.IsQualified("test", []string{"q1", "q2", "q3"})
+		utils.AssertTrue(t, len(res) == 0)
+		res = client.IsQualified("test", []string{"q1", "q2"})
+		utils.AssertFalse(t, len(res) == 0)
+		client.Conn.FlushAll()
+	})
+
+	t.Run("Test index and find jobs", func(t *testing.T) {
+		client.IndexJob("test1", []string{"q1", "q2", "q3"})
+		client.IndexJob("test2", []string{"q1", "q3", "q4"})
+		client.IndexJob("test3", []string{"q1", "q3", "q5"})
+
+		utils.AssertTrue(t, reflect.DeepEqual(client.FindJobs([]string{"q1"}), []string{}))
+		utils.AssertTrue(t, reflect.DeepEqual(client.FindJobs([]string{"q1", "q3", "q4"}), []string{"test2"}))
+		utils.AssertTrue(t, reflect.DeepEqual(client.FindJobs([]string{"q1", "q3", "q5"}), []string{"test3"}))
+		utils.AssertTrue(t, reflect.DeepEqual(client.FindJobs([]string{"q1", "q2", "q3", "q4", "q5"}),
+			[]string{"test1", "test2", "test3"}))
+		client.Conn.FlushAll()
+	})
+
+	t.Run("Test index and find jobs levels", func(t *testing.T) {
+		t.Log("now testing find jobs with levels ...")
+		client.IndexJobLevels("job1", map[string]int64{"q1": 1})
+		client.IndexJobLevels("job2", map[string]int64{"q1": 0, "q2":2})
+
+		utils.AssertTrue(t, reflect.DeepEqual(client.SearchJobLevels(map[string]int64{"q1":0}), []string{}))
+		utils.AssertTrue(t, reflect.DeepEqual(client.SearchJobLevels(map[string]int64{"q1":1}), []string{"job1"}))
+		utils.AssertTrue(t, reflect.DeepEqual(client.SearchJobLevels(map[string]int64{"q1":2}), []string{"job1"}))
+		utils.AssertTrue(t, reflect.DeepEqual(client.SearchJobLevels(map[string]int64{"q2":1}), []string{}))
+		utils.AssertTrue(t, reflect.DeepEqual(client.SearchJobLevels(map[string]int64{"q2":2}), []string{}))
+		utils.AssertTrue(t,
+			reflect.DeepEqual(client.SearchJobLevels(map[string]int64{"q1":0, "q2":1}), []string{}))
+		utils.AssertTrue(t,
+			reflect.DeepEqual(client.SearchJobLevels(map[string]int64{"q1":0, "q2":2}), []string{"job2"}))
+		utils.AssertTrue(t,
+			reflect.DeepEqual(client.SearchJobLevels(map[string]int64{"q1":1, "q2":1}), []string{"job1"}))
+		utils.AssertTrue(t,
+			reflect.DeepEqual(client.SearchJobLevels(map[string]int64{"q1":1, "q2":2}), []string{"job1", "job2"}))
+		t.Log("which passed")
+		client.Conn.FlushAll()
+	})
+
+	t.Run("Test index and find jobs years", func(t *testing.T) {
+		t.Log("now testing find jobs with years ...")
+		client.IndexJobYears("job1", map[string]int64{"q1": 1})
+		client.IndexJobYears("job2", map[string]int64{"q1": 0, "q2":2})
+
+		utils.AssertTrue(t, reflect.DeepEqual(client.SearchJobYears(map[string]int64{"q1":0}), []string{}))
+		//utils.AssertTrue(t, reflect.DeepEqual(client.SearchJobYears(map[string]int64{"q1":1}), []string{"job1"}))
+		//utils.AssertTrue(t, reflect.DeepEqual(client.SearchJobYears(map[string]int64{"q1":2}), []string{"job1"}))
+		//utils.AssertTrue(t, reflect.DeepEqual(client.SearchJobYears(map[string]int64{"q2":1}), []string{}))
+		//utils.AssertTrue(t, reflect.DeepEqual(client.SearchJobYears(map[string]int64{"q2":2}), []string{}))
+		//utils.AssertTrue(t,
+		//	reflect.DeepEqual(client.SearchJobYears(map[string]int64{"q1":0, "q2":1}), []string{}))
+		//utils.AssertTrue(t,
+		//	reflect.DeepEqual(client.SearchJobYears(map[string]int64{"q1":0, "q2":2}), []string{"job2"}))
+		//utils.AssertTrue(t,
+		//	reflect.DeepEqual(client.SearchJobYears(map[string]int64{"q1":1, "q2":1}), []string{"job1"}))
+		//utils.AssertTrue(t,
+		//	reflect.DeepEqual(client.SearchJobYears(map[string]int64{"q1":1, "q2":2}), []string{"job1", "job2"}))
+		//t.Log("which passed")
+		client.Conn.FlushAll()
 	})
 }
+
+
