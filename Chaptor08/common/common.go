@@ -1,0 +1,7 @@
+package common
+
+const (
+	HOMETIMELINESIZE = 1000
+	REFILLUSERSSTEP = 50
+	POSTPERPASS = 1000
+)

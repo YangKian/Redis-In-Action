@@ -237,6 +237,7 @@ func Test(t *testing.T) {
 		client.Conn.FlushAll()
 	})
 
+	//TODO:测试失败
 	t.Run("Test index and find jobs years", func(t *testing.T) {
 		t.Log("now testing find jobs with years ...")
 		client.IndexJobYears("job1", map[string]int64{"q1": 1})
