@@ -1,10 +1,14 @@
 package main
 
 import (
+	"fmt"
+	"redisInAction/Chaptor08/common"
 	"redisInAction/Chaptor08/model"
 	"redisInAction/redisConn"
 	"redisInAction/utils"
+	"strconv"
 	"testing"
+	"time"
 )
 
 func Test(t *testing.T) {
@@ -56,8 +60,61 @@ func Test(t *testing.T) {
 		utils.AssertTrue(t, client.Conn.HGet("user:1", "following").Val() == "1")
 		utils.AssertTrue(t, client.PostStatus("2", "this is some messages content",
 			map[string]interface{}{}) == "1")
-		utils.AssertnumResult(t, 1, int64(len(client.GetStatusMessage("1", "home", 1, 30))))
-		client.Conn.FlushAll()
+		utils.AssertnumResult(t, 1, int64(len(client.GetStatusMessage("1",
+			"home", 1, 30))))
 
+		for i := 3; i < 11; i++ {
+			utils.AssertTrue(t, client.CreateUser(fmt.Sprintf("TestUser%s", strconv.Itoa(i)),
+				fmt.Sprintf("Test User%s", strconv.Itoa(i))) == strconv.Itoa(i))
+			client.FollowUser(strconv.Itoa(i), "2")
+		}
+		common.Postperpass = 5
+
+		utils.AssertTrue(t, client.PostStatus("2",
+			"this is some other message content", map[string]interface{}{}) == "2")
+		time.Sleep(100 * time.Millisecond)
+		utils.AssertnumResult(t, 2, int64(len(client.GetStatusMessage("9",
+			"home", 1, 30))))
+		utils.AssertTrue(t, client.UnfollowUser("1", "2"))
+		utils.AssertnumResult(t, 0, int64(len(client.GetStatusMessage("1",
+			"home", 1, 30))))
+		client.Conn.FlushAll()
+	})
+
+	t.Run("Test refill timeline", func(t *testing.T) {
+		utils.AssertTrue(t, client.CreateUser("TestUser", "Test User") == "1")
+		utils.AssertTrue(t, client.CreateUser("TestUser2", "Test User2") == "2")
+		utils.AssertTrue(t, client.CreateUser("TestUser3", "Test User3") == "3")
+
+		utils.AssertTrue(t, client.FollowUser("1", "2"))
+		utils.AssertTrue(t, client.FollowUser("1", "3"))
+		common.Hometimelinesize = 5
+
+		for i := 0; i < 10; i++ {
+			utils.AssertTrue(t, client.PostStatus("2", "message", map[string]interface{}{}) != "")
+			utils.AssertTrue(t, client.PostStatus("3", "message", map[string]interface{}{}) != "")
+			time.Sleep(50 * time.Millisecond)
+		}
+
+		utils.AssertnumResult(t, 5, int64(len(client.GetStatusMessage("1",
+			"home", 1, 30))))
+		utils.AssertTrue(t, client.UnfollowUser("1", "2"))
+		utils.AssertTrue(t, len(client.GetStatusMessage("1",
+			"home", 1, 30)) < 5)
+
+		client.RefillTimeline("following:1", "home:1", 0)
+		messages := client.GetStatusMessage("1", "home", 1, 30)
+		utils.AssertnumResult(t, 5, int64(len(messages)))
+		for _, msg := range messages {
+			utils.AssertTrue(t, msg["uid"] == "3")
+		}
+
+		client.DeleteStatus("3", messages[len(messages) - 1]["id"])
+		utils.AssertnumResult(t, 4,
+			int64(len(client.GetStatusMessage("1", "home", 1, 30))))
+		utils.AssertnumResult(t, 5, client.Conn.ZCard("home:1").Val())
+		client.CleanTimeLines("3", messages[len(messages) - 1]["id"], 0, false)
+		utils.AssertnumResult(t, 4, client.Conn.ZCard("home:1").Val())
+		defer client.Conn.FlushAll()
 	})
 }

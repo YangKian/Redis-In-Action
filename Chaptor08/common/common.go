@@ -1,7 +1,10 @@
 package common
 
 const (
-	HOMETIMELINESIZE = 1000
 	REFILLUSERSSTEP = 50
-	POSTPERPASS = 1000
+)
+
+var (
+	Postperpass      int64 = 1000
+	Hometimelinesize  int64 = 1000
 )
