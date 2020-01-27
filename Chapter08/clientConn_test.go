@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
-	"redisInAction/Chaptor08/common"
-	"redisInAction/Chaptor08/model"
+	"redisInAction/Chapter08/common"
+	"redisInAction/Chapter08/model"
 	"redisInAction/redisConn"
 	"redisInAction/utils"
 	"strconv"

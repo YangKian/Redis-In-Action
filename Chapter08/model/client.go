@@ -6,7 +6,7 @@ import (
 	uuid "github.com/satori/go.uuid"
 	"log"
 	"math"
-	"redisInAction/Chaptor08/common"
+	"redisInAction/Chapter08/common"
 	"reflect"
 	"sort"
 	"strconv"
