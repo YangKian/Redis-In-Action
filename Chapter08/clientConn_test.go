@@ -24,7 +24,7 @@ func Test(t *testing.T) {
 		utils.AssertTrue(t, client.Conn.HGet("user:1", "posts").Val() == "1")
 		defer client.Conn.FlushAll()
 	})
-	
+
 	t.Run("Test follow and unfollow user", func(t *testing.T) {
 		utils.AssertTrue(t, client.CreateUser("TestUser", "Test User") == "1")
 		utils.AssertTrue(t, client.CreateUser("TestUser2", "Test User2") == "2")
@@ -109,11 +109,11 @@ func Test(t *testing.T) {
 			utils.AssertTrue(t, msg["uid"] == "3")
 		}
 
-		client.DeleteStatus("3", messages[len(messages) - 1]["id"])
+		client.DeleteStatus("3", messages[len(messages)-1]["id"])
 		utils.AssertnumResult(t, 4,
 			int64(len(client.GetStatusMessage("1", "home", 1, 30))))
 		utils.AssertnumResult(t, 5, client.Conn.ZCard("home:1").Val())
-		client.CleanTimeLines("3", messages[len(messages) - 1]["id"], 0, false)
+		client.CleanTimeLines("3", messages[len(messages)-1]["id"], 0, false)
 		utils.AssertnumResult(t, 4, client.Conn.ZCard("home:1").Val())
 		defer client.Conn.FlushAll()
 	})

@@ -31,10 +31,24 @@ func AssertnumResult(t *testing.T, want, get int64) {
 	}
 }
 
+func AssertStringResult(t *testing.T, want, get string) {
+	t.Helper()
+	if want != get {
+		t.Errorf("want get %v, actual get %v\n", want, get)
+	}
+}
+
 func AssertfloatResult(t *testing.T, want, get float64) {
 	t.Helper()
 	if want != get {
 		t.Errorf("want get %v, actual get %v\n", want, get)
+	}
+}
+
+func AssertThread(t *testing.T, threadStat int32) {
+	t.Helper()
+	if threadStat != 0 {
+		t.Error("The clean sessions thread is still alive?!?")
 	}
 }
 

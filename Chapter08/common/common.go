@@ -6,5 +6,5 @@ const (
 
 var (
 	Postperpass      int64 = 1000
-	Hometimelinesize  int64 = 1000
+	Hometimelinesize int64 = 1000
 )

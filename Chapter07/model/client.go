@@ -25,7 +25,9 @@ func NewClient(conn *redis.Client) *Client {
 func Tokenize(content string) []string {
 	words := utils.Set{}
 	for _, match := range common.WORDSRE.FindAllString(strings.ToLower(content), -1) {
-		if len(match) < 2 { continue }
+		if len(match) < 2 {
+			continue
+		}
 		words.Add(match)
 	}
 	return words.Intersection(&common.STOPWORDS)
@@ -50,14 +52,14 @@ func (c *Client) setCommon(method string, names *[]string, ttl int) string {
 	id := uuid.NewV4().String()
 	pipeline := c.Conn.TxPipeline()
 
-	namelist := make([]reflect.Value, 0, len(*names) + 1)
-	namelist = append(namelist, reflect.ValueOf("idx:" + id))
+	namelist := make([]reflect.Value, 0, len(*names)+1)
+	namelist = append(namelist, reflect.ValueOf("idx:"+id))
 	for _, name := range *names {
-		namelist = append(namelist, reflect.ValueOf("idx:" + name))
+		namelist = append(namelist, reflect.ValueOf("idx:"+name))
 	}
 	methodValue := reflect.ValueOf(pipeline).MethodByName(method)
 	methodValue.Call(namelist)
-	pipeline.Expire("idx:" + id, time.Duration(ttl) * time.Second)
+	pipeline.Expire("idx:"+id, time.Duration(ttl)*time.Second)
 	if _, err := pipeline.Exec(); err != nil {
 		log.Println("pipeline err in setCommon: ", err)
 		return ""
@@ -77,7 +79,7 @@ func (c *Client) Difference(items []string, ttl int) string {
 	return c.setCommon("SDiffStore", &items, ttl)
 }
 
-func Parse(query string) (all [][]string, unwantedlist []string){
+func Parse(query string) (all [][]string, unwantedlist []string) {
 	unwanted, current := utils.Set{}, utils.Set{}
 	for _, word := range common.QUERYRE.FindAllString(strings.ToLower(query), -1) {
 		prefix := word[0]
@@ -133,7 +135,7 @@ func (c *Client) ParseAndSearch(query string, ttl int) string {
 	}
 
 	if len(unwanted) != 0 {
-		unwanted = append([]string{intersectResult}, unwanted... )
+		unwanted = append([]string{intersectResult}, unwanted...)
 		return c.Difference(unwanted, ttl)
 	}
 
@@ -154,7 +156,7 @@ func (c *Client) SearchAndSort(query string, id string, ttl int, sort string, st
 	alpha := !strings.Contains(sort, "updated") && !strings.Contains(sort, "id") &&
 		!strings.Contains(sort, "created")
 
-	if id != "" && !c.Conn.Expire(id, time.Duration(ttl) * time.Second).Val() {
+	if id != "" && !c.Conn.Expire(id, time.Duration(ttl)*time.Second).Val() {
 		id = ""
 	}
 
@@ -165,7 +167,7 @@ func (c *Client) SearchAndSort(query string, id string, ttl int, sort string, st
 	var res *redis.StringSliceCmd
 	pipeline := c.Conn.TxPipeline()
 	pipeline.SCard("idx:" + id)
-	res = pipeline.Sort("idx:" + id, &redis.Sort{By:by, Alpha:alpha, Order:order, Offset:start, Count:num})
+	res = pipeline.Sort("idx:"+id, &redis.Sort{By: by, Alpha: alpha, Order: order, Offset: start, Count: num})
 	if _, err := pipeline.Exec(); err != nil {
 		log.Println("pipeline err in SearchAndSort: ", err)
 		return nil, ""
@@ -174,18 +176,18 @@ func (c *Client) SearchAndSort(query string, id string, ttl int, sort string, st
 }
 
 func (c *Client) SearchAndZsort(query string, id string, ttl int, update, vote float64, start, num int64,
-		desc bool) ([]string, string) {
-	if id != "" && !c.Conn.Expire(id, time.Duration(ttl) * time.Second).Val() {
+	desc bool) ([]string, string) {
+	if id != "" && !c.Conn.Expire(id, time.Duration(ttl)*time.Second).Val() {
 		id = ""
 	}
 
 	if id == "" {
 		id = c.ParseAndSearch(query, ttl)
 
-		scoredSearch := map[string]float64 {
-			id: 0,
+		scoredSearch := map[string]float64{
+			id:            0,
 			"sort:update": update,
-			"sort:votes": vote,
+			"sort:votes":  vote,
 		}
 		id = c.Zintersect(scoredSearch, 300, "")
 	}
@@ -194,9 +196,9 @@ func (c *Client) SearchAndZsort(query string, id string, ttl int, update, vote f
 	pipeline.ZCard("idx:" + id)
 	var res *redis.StringSliceCmd
 	if desc {
-		res = pipeline.ZRevRange("idx:" + id, start, start + num - 1)
+		res = pipeline.ZRevRange("idx:"+id, start, start+num-1)
 	} else {
-		res = pipeline.ZRange("idx:" + id, start, start + num - 1)
+		res = pipeline.ZRange("idx:"+id, start, start+num-1)
 	}
 	if _, err := pipeline.Exec(); err != nil {
 		log.Println("pipeline err in SearchAndZsort: ", err)
@@ -212,7 +214,7 @@ func (c *Client) zsetCommon(method string, scores map[string]float64, ttl int, A
 
 	zstore := redis.ZStore{}
 	for key := range scores {
-		zstore.Keys = append(zstore.Keys, "idx:" + key)
+		zstore.Keys = append(zstore.Keys, "idx:"+key)
 		zstore.Weights = append(zstore.Weights, scores[key])
 	}
 	switch strings.ToLower(Aggre) {
@@ -226,7 +228,7 @@ func (c *Client) zsetCommon(method string, scores map[string]float64, ttl int, A
 	methodValue := reflect.ValueOf(pipeline).MethodByName(method)
 	args := []reflect.Value{reflect.ValueOf("idx:" + id), reflect.ValueOf(&zstore)}
 	methodValue.Call(args)
-	pipeline.Expire("idx:" + id, time.Duration(ttl) * time.Second)
+	pipeline.Expire("idx:"+id, time.Duration(ttl)*time.Second)
 	if _, err := pipeline.Exec(); err != nil {
 		log.Println("pipeline err in zsetCommon: ", err)
 		return ""
@@ -253,7 +255,7 @@ func (c *Client) StringToScore(str string, ignoreCase bool) int {
 	} else {
 		byteString = []byte(str[:6])
 	}
-	pieces := make([]int, 0 , len(byteString))
+	pieces := make([]int, 0, len(byteString))
 	for _, v := range byteString {
 		pieces = append(pieces, int(v))
 	}
@@ -263,25 +265,25 @@ func (c *Client) StringToScore(str string, ignoreCase bool) int {
 
 	score, temp := 0, 0
 	for _, piece := range pieces {
-		score = score * 257 + piece + 1
+		score = score*257 + piece + 1
 	}
 
 	if len(str) > 6 {
 		temp = 1
 	}
 
-	return score * 2 + temp
+	return score*2 + temp
 }
 
 func (c *Client) IndexAd(id string, locations []string, content, types string, value float64) {
 	pipeline := c.Conn.TxPipeline()
 	for _, location := range locations {
-		pipeline.SAdd("idx:req:" + location, id)
+		pipeline.SAdd("idx:req:"+location, id)
 	}
 
 	words := Tokenize(content)
-	for _ , word := range words {
-		pipeline.ZAdd("idx:" + word, &redis.Z{Member:id, Score:0})
+	for _, word := range words {
+		pipeline.ZAdd("idx:"+word, &redis.Z{Member: id, Score: 0})
 	}
 
 	if common.AVERAGEPER1K[types] == 0 {
@@ -327,7 +329,7 @@ func (c *Client) TargetAds(locations []string, content string) (string, string) 
 	tempAd := &redis.StringSliceCmd{}
 	targetId := &redis.IntCmd{}
 	targetId = pipeline.Incr("ads:served:")
-	tempAd = pipeline.ZRevRange("idx:" + targetedAds, 0, 0)
+	tempAd = pipeline.ZRevRange("idx:"+targetedAds, 0, 0)
 	if _, err := pipeline.Exec(); err != nil {
 		log.Println("pipeline err in TargetAds: ", err)
 	}
@@ -341,29 +343,29 @@ func (c *Client) TargetAds(locations []string, content string) (string, string) 
 	return strconv.Itoa(int(targetId.Val())), adId
 }
 
-func (c *Client) matchLocation(locations *[]string) (string, string){
+func (c *Client) matchLocation(locations *[]string) (string, string) {
 	var required []string
 	for _, loc := range *locations {
-		required = append(required, "req:" + loc)
+		required = append(required, "req:"+loc)
 	}
 	matchedAds := c.Union(required, 300)
-	baseEcpm := c.Zintersect(map[string]float64{matchedAds:0, "ad:value:":1}, 30, "")
+	baseEcpm := c.Zintersect(map[string]float64{matchedAds: 0, "ad:value:": 1}, 30, "")
 
 	return matchedAds, baseEcpm
 }
 
-func (c *Client) finishScoring(matched, base, content string) ([]string, string){
+func (c *Client) finishScoring(matched, base, content string) ([]string, string) {
 	bonusEcpm := map[string]float64{}
 	words := Tokenize(content)
 	for _, word := range words {
-		wordBonus := c.Zintersect(map[string]float64{matched:0, word:1}, 30, "")
+		wordBonus := c.Zintersect(map[string]float64{matched: 0, word: 1}, 30, "")
 		bonusEcpm[wordBonus] = 1
 	}
 
 	if len(bonusEcpm) != 0 {
 		minimum := c.ZUnion(bonusEcpm, 30, "MIN")
 		maximum := c.ZUnion(bonusEcpm, 30, "MAX")
-		return words, c.ZUnion(map[string]float64{base:1, minimum:0.5, maximum:0.5}, 30, "")
+		return words, c.ZUnion(map[string]float64{base: 1, minimum: 0.5, maximum: 0.5}, 30, "")
 	}
 	return words, base
 }
@@ -374,7 +376,7 @@ func (c *Client) recordTargetingResult(targetId, adId string, words []string) {
 	sort.Slice(terms, func(i, j int) bool {
 		return terms[i] < terms[j]
 	})
-	matched := make([]string, 0 ,len(words))
+	matched := make([]string, 0, len(words))
 	for _, word := range words {
 		idx := sort.SearchStrings(terms, word)
 		if idx < len(terms) && terms[idx] == word {
@@ -387,7 +389,7 @@ func (c *Client) recordTargetingResult(targetId, adId string, words []string) {
 		for _, word := range matched {
 			pipeline.SAdd(matchedKey, word)
 		}
-		pipeline.Expire(matchedKey, 900 * time.Second)
+		pipeline.Expire(matchedKey, 900*time.Second)
 	}
 
 	types := c.Conn.HGet("type:", adId).Val()
@@ -403,7 +405,7 @@ func (c *Client) recordTargetingResult(targetId, adId string, words []string) {
 		return
 	}
 
-	if int64(res[len(res) - 1].(*redis.FloatCmd).Val()) % 100 == 0 {
+	if int64(res[len(res)-1].(*redis.FloatCmd).Val())%100 == 0 {
 		c.UpdateCpms(adId)
 	}
 }
@@ -439,7 +441,6 @@ func (c *Client) UpdateCpms(adId string) {
 	typeViews, _ := res[0].(*redis.StringCmd).Int()
 	typeClicks, _ := res[1].(*redis.StringCmd).Int()
 
-
 	if typeViews == 0 {
 		typeViews = 1
 	}
@@ -473,7 +474,7 @@ func (c *Client) UpdateCpms(adId string) {
 		adEcpm = c.Conn.ZScore("idx:ad:value:", adId).Val()
 	} else {
 		adEcpm = toECPM(types, adViews, adClicks, baseValue)
-		pipeline.ZAdd("idx:ad:value:", &redis.Z{Member:adId, Score:adEcpm})
+		pipeline.ZAdd("idx:ad:value:", &redis.Z{Member: adId, Score: adEcpm})
 	}
 
 	for _, word := range words {
@@ -484,7 +485,7 @@ func (c *Client) UpdateCpms(adId string) {
 			log.Println("pipeline err in UpdateCpms: ", err)
 			return
 		}
-		views, clicks := res[len(res) - 1].(*redis.FloatCmd).Val(), res[len(res) - 2].(*redis.FloatCmd).Val()
+		views, clicks := res[len(res)-1].(*redis.FloatCmd).Val(), res[len(res)-2].(*redis.FloatCmd).Val()
 
 		if clicks < 1 {
 			continue
@@ -496,7 +497,7 @@ func (c *Client) UpdateCpms(adId string) {
 
 		wordEcpm := toECPM(types, views, clicks, baseValue)
 		bonus := wordEcpm - adEcpm
-		pipeline.ZAdd("idx:" + word, &redis.Z{Member:adId, Score:bonus})
+		pipeline.ZAdd("idx:"+word, &redis.Z{Member: adId, Score: bonus})
 	}
 	if _, err := pipeline.Exec(); err != nil {
 		log.Println("pipeline err in UpdateCpms: ", err)
@@ -512,7 +513,7 @@ func (c *Client) RecordClick(targetId, adId string, action bool) {
 
 	types := c.Conn.HGet("type:", adId).Val()
 	if types == "cpa" {
-		pipeline.Expire(matchKey, 900 * time.Second)
+		pipeline.Expire(matchKey, 900*time.Second)
 		if action {
 			clickKey = fmt.Sprintf("actions:%s", adId)
 		}
@@ -538,7 +539,7 @@ func (c *Client) RecordClick(targetId, adId string, action bool) {
 }
 
 func (c *Client) AddJob(jodId string, requireSkills []string) {
-	c.Conn.SAdd("job:" + jodId, requireSkills)
+	c.Conn.SAdd("job:"+jodId, requireSkills)
 }
 
 func (c *Client) IsQualified(jobId string, candidateSkills []string) []string {
@@ -546,8 +547,8 @@ func (c *Client) IsQualified(jobId string, candidateSkills []string) []string {
 	temp := uuid.NewV4().String()
 	pipline := c.Conn.TxPipeline()
 	pipline.SAdd(temp, candidateSkills)
-	pipline.Expire(temp, 5 * time.Second)
-	res = pipline.SDiff("job:" + jobId, temp)
+	pipline.Expire(temp, 5*time.Second)
+	res = pipline.SDiff("job:"+jobId, temp)
 	if _, err := pipline.Exec(); err != nil {
 		log.Println("pipeline err in RecordClick: ", err)
 		return nil
@@ -559,10 +560,10 @@ func (c *Client) IndexJob(jobId string, skills []string) {
 	countSkill := utils.Set{}
 	pipeline := c.Conn.TxPipeline()
 	for _, skill := range skills {
-		pipeline.SAdd("idx:skill:" + skill, jobId)
+		pipeline.SAdd("idx:skill:"+skill, jobId)
 		countSkill.Add(skill)
 	}
-	pipeline.ZAdd("idx:jobs:req", &redis.Z{Member:jobId, Score:float64(len(countSkill))})
+	pipeline.ZAdd("idx:jobs:req", &redis.Z{Member: jobId, Score: float64(len(countSkill))})
 	if _, err := pipeline.Exec(); err != nil {
 		log.Println("pipeline err in RecordClick: ", err)
 		return
@@ -572,11 +573,11 @@ func (c *Client) IndexJob(jobId string, skills []string) {
 func (c *Client) FindJobs(candidateSkills []string) []string {
 	skills := map[string]float64{}
 	for _, skill := range candidateSkills {
-		skills["skill:" + skill] = 1
+		skills["skill:"+skill] = 1
 	}
 	jobScores := c.ZUnion(skills, 30, "")
-	finalResult := c.Zintersect(map[string]float64{jobScores:-1, "jobs:req":1}, 30, "")
-	return c.Conn.ZRangeByScore("idx:" + finalResult, &redis.ZRangeBy{Max:"0", Min:"0"}).Val()
+	finalResult := c.Zintersect(map[string]float64{jobScores: -1, "jobs:req": 1}, 30, "")
+	return c.Conn.ZRangeByScore("idx:"+finalResult, &redis.ZRangeBy{Max: "0", Min: "0"}).Val()
 }
 
 func (c *Client) IndexJobLevels(jobId string, skillLevels map[string]int64) {
@@ -585,11 +586,11 @@ func (c *Client) IndexJobLevels(jobId string, skillLevels map[string]int64) {
 	for skill, level := range skillLevels {
 		totalSkills.Add(skill)
 		level := utils.Min(level, common.SKILLLEVELLIMIT)
-		for wlevel := level; wlevel < common.SKILLLEVELLIMIT + 1; wlevel++ {
+		for wlevel := level; wlevel < common.SKILLLEVELLIMIT+1; wlevel++ {
 			pipeline.SAdd(fmt.Sprintf("idx:skill:%s:%s", skill, strconv.Itoa(int(wlevel))), jobId)
 		}
 	}
-	pipeline.ZAdd("idx:jobs:req", &redis.Z{Member:jobId, Score:float64(len(totalSkills))})
+	pipeline.ZAdd("idx:jobs:req", &redis.Z{Member: jobId, Score: float64(len(totalSkills))})
 	if _, err := pipeline.Exec(); err != nil {
 		log.Println("pipeline err in IndexJobLevels: ", err)
 		return
@@ -603,8 +604,8 @@ func (c *Client) SearchJobLevels(skillLevels map[string]int64) []string {
 		skills[fmt.Sprintf("skill:%s:%s", skill, strconv.Itoa(int(level)))] = 1
 	}
 	jobScores := c.ZUnion(skills, 30, "")
-	finalResult := c.Zintersect(map[string]float64{jobScores:-1, "jobs:req":1}, 30, "")
-	return c.Conn.ZRangeByScore("idx:" + finalResult, &redis.ZRangeBy{Min:"-inf", Max:"0"}).Val()
+	finalResult := c.Zintersect(map[string]float64{jobScores: -1, "jobs:req": 1}, 30, "")
+	return c.Conn.ZRangeByScore("idx:"+finalResult, &redis.ZRangeBy{Min: "-inf", Max: "0"}).Val()
 }
 
 func (c *Client) IndexJobYears(jobId string, skillYears map[string]int64) {
@@ -613,10 +614,10 @@ func (c *Client) IndexJobYears(jobId string, skillYears map[string]int64) {
 	for skill, years := range skillYears {
 		totalSkills.Add(skill)
 		pipeline.ZAdd(fmt.Sprintf("idx:skill:%s:years", skill),
-			&redis.Z{Member:jobId, Score:float64(utils.Max(years, 0))})
+			&redis.Z{Member: jobId, Score: float64(utils.Max(years, 0))})
 	}
 	pipeline.SAdd("idx:jobs:all", jobId)
-	pipeline.ZAdd("idx:jobs:req", &redis.Z{Member:jobId, Score:float64(len(totalSkills))})
+	pipeline.ZAdd("idx:jobs:req", &redis.Z{Member: jobId, Score: float64(len(totalSkills))})
 	if _, err := pipeline.Exec(); err != nil {
 		log.Println("pipeline err in IndexJobLevels: ", err)
 		return
@@ -627,10 +628,10 @@ func (c *Client) SearchJobYears(skillyears map[string]int64) []string {
 	pipeline := c.Conn.TxPipeline()
 	union := []string{}
 	for skill, years := range skillyears {
-		subResult := c.Zintersect(map[string]float64{"jobs:all":float64(-years),
-			fmt.Sprintf("skill:%s:years", skill):1}, 30, "")
-		pipeline.ZRemRangeByScore("idx:" + subResult, "(0", "inf")
-		union = append(union, c.Zintersect(map[string]float64{"jobs:all":1, subResult:0}, 30, ""))
+		subResult := c.Zintersect(map[string]float64{"jobs:all": float64(-years),
+			fmt.Sprintf("skill:%s:years", skill): 1}, 30, "")
+		pipeline.ZRemRangeByScore("idx:"+subResult, "(0", "inf")
+		union = append(union, c.Zintersect(map[string]float64{"jobs:all": 1, subResult: 0}, 30, ""))
 	}
 
 	unionmap := make(map[string]float64, len(union))
@@ -639,9 +640,9 @@ func (c *Client) SearchJobYears(skillyears map[string]int64) []string {
 	}
 
 	jobScores := c.ZUnion(unionmap, 30, "")
-	finalResult := c.Zintersect(map[string]float64{jobScores:-1, "jobs:req":1}, 30, "")
+	finalResult := c.Zintersect(map[string]float64{jobScores: -1, "jobs:req": 1}, 30, "")
 	var res *redis.StringSliceCmd
-	res = pipeline.ZRangeByScore("idx:" + finalResult, &redis.ZRangeBy{Min:"-inf", Max:"0"})
+	res = pipeline.ZRangeByScore("idx:"+finalResult, &redis.ZRangeBy{Min: "-inf", Max: "0"})
 	rrr, err := pipeline.Exec()
 	if err != nil {
 		log.Println("pipeline err in IndexJobLevels: ", err)

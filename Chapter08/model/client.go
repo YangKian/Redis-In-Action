@@ -24,8 +24,8 @@ func NewClient(conn *redis.Client) *Client {
 
 func (c *Client) CreateUser(login, name string) string {
 	llogin := strings.ToLower(login)
-	lock := c.AcquireLockWithTimeout("user:" + llogin, 10, 10)
-	defer c.ReleaseLock("user:" + llogin, lock)
+	lock := c.AcquireLockWithTimeout("user:"+llogin, 10, 10)
+	defer c.ReleaseLock("user:"+llogin, lock)
 
 	if lock == "" {
 		return ""
@@ -66,7 +66,7 @@ func (c *Client) CreateStatus(uid, message string, data map[string]interface{}) 
 	}
 
 	data["message"] = message
-	data["posted"] =time.Now().UnixNano()
+	data["posted"] = time.Now().UnixNano()
 	data["id"] = id
 	data["uid"] = uid
 	data["login"] = login
@@ -95,7 +95,7 @@ func (c *Client) PostStatus(uid, message string, data map[string]interface{}) st
 		return ""
 	}
 
-	post := redis.Z{Member:id, Score:posted}
+	post := redis.Z{Member: id, Score: posted}
 	c.Conn.ZAdd(fmt.Sprintf("profile:%s", uid), &post)
 
 	c.SyndicateStatus(uid, post, 0)
@@ -104,14 +104,14 @@ func (c *Client) PostStatus(uid, message string, data map[string]interface{}) st
 
 func (c *Client) SyndicateStatus(uid string, post redis.Z, start int) {
 	followers := c.Conn.ZRangeByScoreWithScores(fmt.Sprintf("followers:%s", uid),
-		&redis.ZRangeBy{Min:"0", Max:"inf", Offset:int64(start), Count:common.Postperpass}).Val()
+		&redis.ZRangeBy{Min: "0", Max: "inf", Offset: int64(start), Count: common.Postperpass}).Val()
 
 	pipeline := c.Conn.TxPipeline()
 	for i, z := range followers {
 		follower := z.Member.(string)
 		start = i + 1
 		pipeline.ZAdd(fmt.Sprintf("home:%s", follower), &post)
-		pipeline.ZRemRangeByRank(fmt.Sprintf("home:%s", follower), 0, -common.Hometimelinesize- 1)
+		pipeline.ZRemRangeByRank(fmt.Sprintf("home:%s", follower), 0, -common.Hometimelinesize-1)
 	}
 	if _, err := pipeline.Exec(); err != nil {
 		log.Println("pipeline err in syndicateStatus: ", err)
@@ -129,7 +129,7 @@ func (c *Client) SyndicateStatusList(uid string, post map[string]float64, start 
 		key = fmt.Sprintf("list:out:%s", uid)
 	}
 	followers := c.Conn.ZRangeByScoreWithScores(key,
-		&redis.ZRangeBy{Min:"0", Max:"inf", Offset:int64(start), Count:common.Postperpass}).Val()
+		&redis.ZRangeBy{Min: "0", Max: "inf", Offset: int64(start), Count: common.Postperpass}).Val()
 
 	pipeline := c.Conn.Pipeline()
 	var base string
@@ -141,8 +141,8 @@ func (c *Client) SyndicateStatusList(uid string, post map[string]float64, start 
 		} else {
 			base = fmt.Sprintf("home:%s", follower)
 		}
-		pipeline.ZAdd(base, &redis.Z{Member:follower, Score:post[follower]})
-		pipeline.ZRemRangeByRank(base, 0, -common.Hometimelinesize- 1)
+		pipeline.ZAdd(base, &redis.Z{Member: follower, Score: post[follower]})
+		pipeline.ZRemRangeByRank(base, 0, -common.Hometimelinesize-1)
 	}
 	if _, err := pipeline.Exec(); err != nil {
 		log.Println("pipeline err in SyndicateStatusList: ", err)
@@ -151,7 +151,7 @@ func (c *Client) SyndicateStatusList(uid string, post map[string]float64, start 
 
 	if len(followers) >= int(common.Postperpass) {
 		c.executeLater("default", "SyndicateStatusList", uid, post, start, onLists)
-	} else if ! onLists {
+	} else if !onLists {
 		c.executeLater("default", "SyndicateStatusList", uid, post, 0, true)
 	}
 }
@@ -172,7 +172,7 @@ func (c *Client) executeLater(queue, name string, args ...interface{}) {
 
 func (c *Client) GetStatusMessage(uid, timeline string, page, count int64) []map[string]string {
 	statuses := c.Conn.ZRevRange(fmt.Sprintf("%s:%s", timeline, uid),
-		(page - 1) * count, page * count - 1).Val()
+		(page-1)*count, page*count-1).Val()
 	pipeline := c.Conn.TxPipeline()
 	for _, id := range statuses {
 		pipeline.HGetAll(fmt.Sprintf("status:%s", id))
@@ -224,7 +224,7 @@ func (c *Client) CleanTimeLines(uid, statusId string, start int, onLists bool) {
 		key = fmt.Sprintf("followers:%s", uid)
 	}
 	followers := c.Conn.ZRangeByScoreWithScores(key,
-		&redis.ZRangeBy{Min:"0", Max:"inf", Offset:int64(start), Count:common.Postperpass}).Val()
+		&redis.ZRangeBy{Min: "0", Max: "inf", Offset: int64(start), Count: common.Postperpass}).Val()
 
 	pipeline := c.Conn.Pipeline()
 
@@ -245,7 +245,7 @@ func (c *Client) CleanTimeLines(uid, statusId string, start int, onLists bool) {
 
 	if len(followers) >= int(common.Postperpass) {
 		c.executeLater("default", "CleanTimeLines", uid, statusId, start, onLists)
-	} else if ! onLists {
+	} else if !onLists {
 		c.executeLater("default", "CleanTimeLines", uid, statusId, 0, true)
 	}
 }
@@ -261,9 +261,9 @@ func (c *Client) FollowUser(uid, otherUid string) bool {
 	now := time.Now().UnixNano()
 
 	pipeline := c.Conn.TxPipeline()
-	pipeline.ZAdd(fkey1, &redis.Z{Member:otherUid, Score:float64(now)})
-	pipeline.ZAdd(fkey2, &redis.Z{Member:uid, Score:float64(now)})
-	pipeline.ZRevRangeWithScores(fmt.Sprintf("profile:%s", otherUid), 0, common.Hometimelinesize- 1)
+	pipeline.ZAdd(fkey1, &redis.Z{Member: otherUid, Score: float64(now)})
+	pipeline.ZAdd(fkey2, &redis.Z{Member: uid, Score: float64(now)})
+	pipeline.ZRevRangeWithScores(fmt.Sprintf("profile:%s", otherUid), 0, common.Hometimelinesize-1)
 	res, err := pipeline.Exec()
 	if err != nil {
 		log.Println("pipeline err in FollowUser")
@@ -278,7 +278,7 @@ func (c *Client) FollowUser(uid, otherUid string) bool {
 			pipeline.ZAdd(fmt.Sprintf("home:%s", uid), &z)
 		}
 	}
-	pipeline.ZRemRangeByRank(fmt.Sprintf("home:%s", uid), 0, -common.Hometimelinesize- 1)
+	pipeline.ZRemRangeByRank(fmt.Sprintf("home:%s", uid), 0, -common.Hometimelinesize-1)
 
 	if _, err := pipeline.Exec(); err != nil {
 		log.Println("pipeline err in FollowUser")
@@ -298,7 +298,7 @@ func (c *Client) UnfollowUser(uid, otherUid string) bool {
 	pipeline := c.Conn.TxPipeline()
 	pipeline.ZRem(fkey1, otherUid)
 	pipeline.ZRem(fkey2, uid)
-	pipeline.ZRevRange(fmt.Sprintf("profile:%s", otherUid), 0, common.Hometimelinesize- 1)
+	pipeline.ZRevRange(fmt.Sprintf("profile:%s", otherUid), 0, common.Hometimelinesize-1)
 	res, err := pipeline.Exec()
 	if err != nil {
 		log.Println("pipeline err in FollowUser")
@@ -325,7 +325,7 @@ func (c *Client) RefillTimeline(incoming, timeline string, start int) {
 	}
 
 	users := c.Conn.ZRangeByScoreWithScores(incoming,
-		&redis.ZRangeBy{Min:"0", Max:"inf", Offset:int64(start), Count:common.REFILLUSERSSTEP}).Val()
+		&redis.ZRangeBy{Min: "0", Max: "inf", Offset: int64(start), Count: common.REFILLUSERSSTEP}).Val()
 
 	pipeline := c.Conn.TxPipeline()
 
@@ -355,14 +355,14 @@ func (c *Client) RefillTimeline(incoming, timeline string, start int) {
 	if len(message) != 0 {
 		pipeline.ZAdd(timeline, message...)
 	}
-	pipeline.ZRemRangeByRank(timeline, 0, -common.Hometimelinesize - 1)
+	pipeline.ZRemRangeByRank(timeline, 0, -common.Hometimelinesize-1)
 	if _, err := pipeline.Exec(); err != nil {
 		log.Println("pipeline err in RefillTimeline")
 		return
 	}
 
 	if len(users) >= common.REFILLUSERSSTEP {
-		c.executeLater("default", "RefillTimeline",incoming, timeline, start)
+		c.executeLater("default", "RefillTimeline", incoming, timeline, start)
 	}
 
 }

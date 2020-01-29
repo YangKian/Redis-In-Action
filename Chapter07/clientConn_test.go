@@ -36,19 +36,19 @@ func Test(t *testing.T) {
 		client.IndexDocument("test", common.CONTENT)
 
 		r := client.Intersect([]string{"content", "indexed"}, 30)
-		utils.AssertTrue(t, reflect.DeepEqual(client.Conn.SMembers("idx:" + r).Val(), []string{"test"}))
+		utils.AssertTrue(t, reflect.DeepEqual(client.Conn.SMembers("idx:"+r).Val(), []string{"test"}))
 
 		r = client.Intersect([]string{"content", "ignored"}, 30)
-		utils.AssertTrue(t, reflect.DeepEqual(client.Conn.SMembers("idx:" + r).Val(), []string{}))
+		utils.AssertTrue(t, reflect.DeepEqual(client.Conn.SMembers("idx:"+r).Val(), []string{}))
 
 		r = client.Union([]string{"content", "ignored"}, 30)
-		utils.AssertTrue(t, reflect.DeepEqual(client.Conn.SMembers("idx:" + r).Val(), []string{"test"}))
+		utils.AssertTrue(t, reflect.DeepEqual(client.Conn.SMembers("idx:"+r).Val(), []string{"test"}))
 
 		r = client.Difference([]string{"content", "ignored"}, 30)
-		utils.AssertTrue(t, reflect.DeepEqual(client.Conn.SMembers("idx:" + r).Val(), []string{"test"}))
+		utils.AssertTrue(t, reflect.DeepEqual(client.Conn.SMembers("idx:"+r).Val(), []string{"test"}))
 
 		r = client.Difference([]string{"content", "indexed"}, 30)
-		utils.AssertTrue(t, reflect.DeepEqual(client.Conn.SMembers("idx:" + r).Val(), []string{}))
+		utils.AssertTrue(t, reflect.DeepEqual(client.Conn.SMembers("idx:"+r).Val(), []string{}))
 		defer client.Conn.FlushAll()
 	})
 
@@ -70,19 +70,19 @@ func Test(t *testing.T) {
 		client.IndexDocument("test", common.CONTENT)
 
 		r := client.ParseAndSearch("content", 30)
-		utils.AssertTrue(t, reflect.DeepEqual(client.Conn.SMembers("idx:" + r).Val(), []string{"test"}))
+		utils.AssertTrue(t, reflect.DeepEqual(client.Conn.SMembers("idx:"+r).Val(), []string{"test"}))
 
 		r = client.ParseAndSearch("content indexed random", 30)
-		utils.AssertTrue(t, reflect.DeepEqual(client.Conn.SMembers("idx:" + r).Val(), []string{"test"}))
+		utils.AssertTrue(t, reflect.DeepEqual(client.Conn.SMembers("idx:"+r).Val(), []string{"test"}))
 
 		r = client.ParseAndSearch("content +indexed random", 30)
-		utils.AssertTrue(t, reflect.DeepEqual(client.Conn.SMembers("idx:" + r).Val(), []string{"test"}))
+		utils.AssertTrue(t, reflect.DeepEqual(client.Conn.SMembers("idx:"+r).Val(), []string{"test"}))
 
 		r = client.ParseAndSearch("content indexed +random", 30)
-		utils.AssertTrue(t, reflect.DeepEqual(client.Conn.SMembers("idx:" + r).Val(), []string{"test"}))
+		utils.AssertTrue(t, reflect.DeepEqual(client.Conn.SMembers("idx:"+r).Val(), []string{"test"}))
 
 		r = client.ParseAndSearch("content indexed -random", 30)
-		utils.AssertTrue(t, reflect.DeepEqual(client.Conn.SMembers("idx:" + r).Val(), []string{}))
+		utils.AssertTrue(t, reflect.DeepEqual(client.Conn.SMembers("idx:"+r).Val(), []string{}))
 
 		t.Log("Which passed!")
 		defer client.Conn.FlushAll()
@@ -94,12 +94,12 @@ func Test(t *testing.T) {
 		client.IndexDocument("test", common.CONTENT)
 		client.IndexDocument("test2", common.CONTENT)
 		client.Conn.HMSet("kb:doc:test", "updated", 12345, "id", 10)
-		client.Conn.HMSet("kb:doc:test2","updated", 54321, "id", 1)
+		client.Conn.HMSet("kb:doc:test2", "updated", 54321, "id", 1)
 
-		r,  _ := client.SearchAndSort("content", "", 300, "-updated", 0, 20)
+		r, _ := client.SearchAndSort("content", "", 300, "-updated", 0, 20)
 		utils.AssertTrue(t, reflect.DeepEqual(r, []string{"test2", "test"}))
 
-		r,  _ = client.SearchAndSort("content", "", 300, "-id", 0, 20)
+		r, _ = client.SearchAndSort("content", "", 300, "-id", 0, 20)
 		utils.AssertTrue(t, reflect.DeepEqual(r, []string{"test", "test2"}))
 		t.Log("Which passed!")
 		client.Conn.FlushAll()
@@ -110,10 +110,10 @@ func Test(t *testing.T) {
 
 		client.IndexDocument("test", common.CONTENT)
 		client.IndexDocument("test2", common.CONTENT)
-		client.Conn.ZAdd("idx:sort:update", &redis.Z{Member:"test", Score:12345},
-			&redis.Z{Member:"test2", Score:54321})
-		client.Conn.ZAdd("idx:sort:votes", &redis.Z{Member:"test", Score:10},
-			&redis.Z{Member:"test2", Score:1})
+		client.Conn.ZAdd("idx:sort:update", &redis.Z{Member: "test", Score: 12345},
+			&redis.Z{Member: "test2", Score: 54321})
+		client.Conn.ZAdd("idx:sort:votes", &redis.Z{Member: "test", Score: 10},
+			&redis.Z{Member: "test2", Score: 1})
 
 		r, _ := client.SearchAndZsort("content", "", 300, 1, 0,
 			0, 20, false)
@@ -137,14 +137,18 @@ func Test(t *testing.T) {
 
 		sort.Slice(pairs, func(i, j int) bool {
 			var k1, k2 string
-			for k1 = range pairs[i] {}
-			for k2 = range pairs[j] {}
+			for k1 = range pairs[i] {
+			}
+			for k2 = range pairs[j] {
+			}
 			return k1 < k2
 		})
 		sort.Slice(pairs2, func(i, j int) bool {
 			var v1, v2 int
-			for _, v1 = range pairs2[i] {}
-			for _, v2 = range pairs2[j] {}
+			for _, v1 = range pairs2[i] {
+			}
+			for _, v2 = range pairs2[j] {
+			}
 			return v1 < v2
 		})
 		utils.AssertTrue(t, reflect.DeepEqual(pairs, pairs2))
@@ -152,7 +156,7 @@ func Test(t *testing.T) {
 
 	t.Run("Test index and Target ads", func(t *testing.T) {
 		client.IndexAd("1", []string{"USA", "CA"}, common.CONTENT, "cpc", 0.25)
-		client.IndexAd("2", []string{"USA", "VA"}, common.CONTENT + "wooooo", "cpc", 0.125)
+		client.IndexAd("2", []string{"USA", "VA"}, common.CONTENT+"wooooo", "cpc", 0.125)
 
 		adId := make([]string, 100, 100)
 		targetId := make([]string, 100, 100)
@@ -170,11 +174,11 @@ func Test(t *testing.T) {
 		for _, v := range client.Conn.ZRangeWithScores("idx:ad:value:", 0, -1).Val() {
 			res[v.Member.(string)] = v.Score
 		}
-		utils.AssertTrue(t, reflect.DeepEqual(res, map[string]float64{"2": 0.125, "1":0.25}))
+		utils.AssertTrue(t, reflect.DeepEqual(res, map[string]float64{"2": 0.125, "1": 0.25}))
 		for _, v := range client.Conn.ZRangeWithScores("ad:baseValue:value:", 0, -1).Val() {
 			res[v.Member.(string)] = v.Score
 		}
-		utils.AssertTrue(t, reflect.DeepEqual(res, map[string]float64{"2": 0.125, "1":0.25}))
+		utils.AssertTrue(t, reflect.DeepEqual(res, map[string]float64{"2": 0.125, "1": 0.25}))
 
 		fmt.Println(targetId[0], adId[0])
 		client.RecordClick(targetId[0], adId[0], false)
@@ -183,12 +187,12 @@ func Test(t *testing.T) {
 			res[v.Member.(string)] = v.Score
 		}
 		fmt.Println("res 185 ", res)
-		utils.AssertTrue(t, reflect.DeepEqual(res, map[string]float64{"2": 0.125, "1":2.5}))
+		utils.AssertTrue(t, reflect.DeepEqual(res, map[string]float64{"2": 0.125, "1": 2.5}))
 		for _, v := range client.Conn.ZRangeWithScores("ad:baseValue:value:", 0, -1).Val() {
 			res[v.Member.(string)] = v.Score
 		}
 		fmt.Println("res 191 ", res) //TODO:测试结果不正确
-		utils.AssertTrue(t, reflect.DeepEqual(res, map[string]float64{"2": 0.125, "1":0.25}))
+		utils.AssertTrue(t, reflect.DeepEqual(res, map[string]float64{"2": 0.125, "1": 0.25}))
 
 		defer client.Conn.FlushAll()
 	})
@@ -218,21 +222,21 @@ func Test(t *testing.T) {
 	t.Run("Test index and find jobs levels", func(t *testing.T) {
 		t.Log("now testing find jobs with levels ...")
 		client.IndexJobLevels("job1", map[string]int64{"q1": 1})
-		client.IndexJobLevels("job2", map[string]int64{"q1": 0, "q2":2})
+		client.IndexJobLevels("job2", map[string]int64{"q1": 0, "q2": 2})
 
-		utils.AssertTrue(t, reflect.DeepEqual(client.SearchJobLevels(map[string]int64{"q1":0}), []string{}))
-		utils.AssertTrue(t, reflect.DeepEqual(client.SearchJobLevels(map[string]int64{"q1":1}), []string{"job1"}))
-		utils.AssertTrue(t, reflect.DeepEqual(client.SearchJobLevels(map[string]int64{"q1":2}), []string{"job1"}))
-		utils.AssertTrue(t, reflect.DeepEqual(client.SearchJobLevels(map[string]int64{"q2":1}), []string{}))
-		utils.AssertTrue(t, reflect.DeepEqual(client.SearchJobLevels(map[string]int64{"q2":2}), []string{}))
+		utils.AssertTrue(t, reflect.DeepEqual(client.SearchJobLevels(map[string]int64{"q1": 0}), []string{}))
+		utils.AssertTrue(t, reflect.DeepEqual(client.SearchJobLevels(map[string]int64{"q1": 1}), []string{"job1"}))
+		utils.AssertTrue(t, reflect.DeepEqual(client.SearchJobLevels(map[string]int64{"q1": 2}), []string{"job1"}))
+		utils.AssertTrue(t, reflect.DeepEqual(client.SearchJobLevels(map[string]int64{"q2": 1}), []string{}))
+		utils.AssertTrue(t, reflect.DeepEqual(client.SearchJobLevels(map[string]int64{"q2": 2}), []string{}))
 		utils.AssertTrue(t,
-			reflect.DeepEqual(client.SearchJobLevels(map[string]int64{"q1":0, "q2":1}), []string{}))
+			reflect.DeepEqual(client.SearchJobLevels(map[string]int64{"q1": 0, "q2": 1}), []string{}))
 		utils.AssertTrue(t,
-			reflect.DeepEqual(client.SearchJobLevels(map[string]int64{"q1":0, "q2":2}), []string{"job2"}))
+			reflect.DeepEqual(client.SearchJobLevels(map[string]int64{"q1": 0, "q2": 2}), []string{"job2"}))
 		utils.AssertTrue(t,
-			reflect.DeepEqual(client.SearchJobLevels(map[string]int64{"q1":1, "q2":1}), []string{"job1"}))
+			reflect.DeepEqual(client.SearchJobLevels(map[string]int64{"q1": 1, "q2": 1}), []string{"job1"}))
 		utils.AssertTrue(t,
-			reflect.DeepEqual(client.SearchJobLevels(map[string]int64{"q1":1, "q2":2}), []string{"job1", "job2"}))
+			reflect.DeepEqual(client.SearchJobLevels(map[string]int64{"q1": 1, "q2": 2}), []string{"job1", "job2"}))
 		t.Log("which passed")
 		client.Conn.FlushAll()
 	})
@@ -241,9 +245,9 @@ func Test(t *testing.T) {
 	t.Run("Test index and find jobs years", func(t *testing.T) {
 		t.Log("now testing find jobs with years ...")
 		client.IndexJobYears("job1", map[string]int64{"q1": 1})
-		client.IndexJobYears("job2", map[string]int64{"q1": 0, "q2":2})
+		client.IndexJobYears("job2", map[string]int64{"q1": 0, "q2": 2})
 
-		utils.AssertTrue(t, reflect.DeepEqual(client.SearchJobYears(map[string]int64{"q1":0}), []string{}))
+		utils.AssertTrue(t, reflect.DeepEqual(client.SearchJobYears(map[string]int64{"q1": 0}), []string{}))
 		//utils.AssertTrue(t, reflect.DeepEqual(client.SearchJobYears(map[string]int64{"q1":1}), []string{"job1"}))
 		//utils.AssertTrue(t, reflect.DeepEqual(client.SearchJobYears(map[string]int64{"q1":2}), []string{"job1"}))
 		//utils.AssertTrue(t, reflect.DeepEqual(client.SearchJobYears(map[string]int64{"q2":1}), []string{}))
@@ -260,5 +264,3 @@ func Test(t *testing.T) {
 		client.Conn.FlushAll()
 	})
 }
-
-
