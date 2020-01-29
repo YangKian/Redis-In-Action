@@ -1,12 +1,13 @@
 package model
 
 import (
+	"crypto"
+	"encoding/hex"
 	"encoding/json"
 	"github.com/go-redis/redis/v7"
 	"log"
 	"net/url"
 	"redisInAction/Chapter02/common"
-	"redisInAction/Chapter02/pkg/helper"
 	"redisInAction/Chapter02/repository"
 	"redisInAction/utils"
 	"strings"
@@ -97,7 +98,7 @@ func (r *Client) CacheRequest(request string, callback func(string) string) stri
 		return callback(request)
 	}
 
-	pageKey := "cache:" + helper.HashRequest(request)
+	pageKey := "cache:" + hashRequest(request)
 	content := r.Conn.Get(pageKey).Val()
 
 	if content == "" {
@@ -203,3 +204,11 @@ func isDynamic(request string) bool {
 	}
 	return true
 }
+
+func hashRequest(request string) string {
+	hash := crypto.MD5.New()
+	hash.Write([]byte(request))
+	res := hash.Sum(nil)
+	return hex.EncodeToString(res)
+}
+
