@@ -2,238 +2,236 @@ package main
 
 import (
 	"fmt"
-	"github.com/go-redis/redis"
-	"redisInAction/Chapter03/pkg/redisConn"
+	"github.com/go-redis/redis/v7"
+	"redisInAction/Chapter03/model"
+	"redisInAction/redisConn"
+	"redisInAction/utils"
+
 	"testing"
 	"time"
 )
 
 func TestLoginCookies(t *testing.T) {
 	conn := redisConn.ConnectRedis()
+	client := model.NewClient(conn)
 
 	t.Run("Test INCR and DECR", func(t *testing.T) {
-		conn.Get("key")
-		res := conn.Incr("key").Val()
-		assertnumResult(t, 1, res)
-		res = conn.IncrBy("key", 15).Val()
-		assertnumResult(t, 16, res)
-		res = conn.DecrBy("key", 5).Val()
-		assertnumResult(t, 11, res)
-		succ := conn.Set("key", 13, 0).Val()
-		assertStringResult(t, "OK", succ)
-		res, _ = conn.Get("key").Int64()
-		assertnumResult(t, 13, res)
-		defer conn.Reset()
+		client.Conn.Get("key")
+		res := client.Conn.Incr("key").Val()
+		utils.AssertnumResult(t, 1, res)
+		res = client.Conn.IncrBy("key", 15).Val()
+		utils.AssertnumResult(t, 16, res)
+		res = client.Conn.DecrBy("key", 5).Val()
+		utils.AssertnumResult(t, 11, res)
+		succ := client.Conn.Set("key", 13, 0).Val()
+		utils.AssertStringResult(t, "OK", succ)
+		res, _ = client.Conn.Get("key").Int64()
+		utils.AssertnumResult(t, 13, res)
+		defer client.Reset()
 	})
 
 	t.Run("Operation on substring and bit", func(t *testing.T) {
-		res := conn.Append("new-string-key", "hello ").Val()
-		assertnumResult(t, 6, res)
-		res = conn.Append("new-string-key", "world!").Val()
-		assertnumResult(t, 12, res)
-		str := conn.GetRange("new-string-key", 3, 7).Val()
-		assertStringResult(t, "lo wo", str)
-		res = conn.SetRange("new-string-key", 0, "H").Val()
-		conn.SetRange("new-string-key", 6, "W")
-		assertnumResult(t, 12, 12)
-		str = conn.Get("new-string-key").Val()
-		assertStringResult(t, "Hello World!", str)
-		res = conn.SetRange("new-string-key", 11, ", how are you?").Val()
-		assertnumResult(t, 25, res)
-		str = conn.Get("new-string-key").Val()
-		assertStringResult(t, "Hello World, how are you?", str)
-		res = conn.SetBit("another-key", 2, 1).Val()
-		assertnumResult(t, 0, 0)
-		res = conn.SetBit("another-key", 7, 1).Val()
-		assertnumResult(t, 0, 0)
-		str = conn.Get("another-key").Val()
-		assertStringResult(t, "!", str)
-		defer conn.Reset()
+		res := client.Conn.Append("new-string-key", "hello ").Val()
+		utils.AssertnumResult(t, 6, res)
+		res = client.Conn.Append("new-string-key", "world!").Val()
+		utils.AssertnumResult(t, 12, res)
+		str := client.Conn.GetRange("new-string-key", 3, 7).Val()
+		utils.AssertStringResult(t, "lo wo", str)
+		res = client.Conn.SetRange("new-string-key", 0, "H").Val()
+		client.Conn.SetRange("new-string-key", 6, "W")
+		utils.AssertnumResult(t, 12, 12)
+		str = client.Conn.Get("new-string-key").Val()
+		utils.AssertStringResult(t, "Hello World!", str)
+		res = client.Conn.SetRange("new-string-key", 11, ", how are you?").Val()
+		utils.AssertnumResult(t, 25, res)
+		str = client.Conn.Get("new-string-key").Val()
+		utils.AssertStringResult(t, "Hello World, how are you?", str)
+		res = client.Conn.SetBit("another-key", 2, 1).Val()
+		utils.AssertnumResult(t, 0, 0)
+		res = client.Conn.SetBit("another-key", 7, 1).Val()
+		utils.AssertnumResult(t, 0, 0)
+		str = client.Conn.Get("another-key").Val()
+		utils.AssertStringResult(t, "!", str)
+		defer client.Reset()
 	})
 
 	t.Run("Operation on list", func(t *testing.T) {
-		conn.RPush("list-key", "last")
-		conn.LPush("list-key", "first")
-		res := conn.RPush("list-key", "new last").Val()
-		assertnumResult(t, 3, res)
-		lst := conn.LRange("list-key", 0, -1).Val()
+		client.Conn.RPush("list-key", "last")
+		client.Conn.LPush("list-key", "first")
+		res := client.Conn.RPush("list-key", "new last").Val()
+		utils.AssertnumResult(t, 3, res)
+		lst := client.Conn.LRange("list-key", 0, -1).Val()
 		t.Log("the list is: ", lst)
-		str := conn.LPop("list-key").Val()
-		assertStringResult(t, "first", str)
-		str = conn.LPop("list-key").Val()
-		assertStringResult(t, "last", str)
-		lst = conn.LRange("list-key", 0, -1).Val()
+		str := client.Conn.LPop("list-key").Val()
+		utils.AssertStringResult(t, "first", str)
+		str = client.Conn.LPop("list-key").Val()
+		utils.AssertStringResult(t, "last", str)
+		lst = client.Conn.LRange("list-key", 0, -1).Val()
 		t.Log("the list is: ", lst)
-		res = conn.RPush("list-key", "a", "b", "c").Val()
-		assertnumResult(t, 4, res)
-		conn.LTrim("list-key", 2, -1)
+		res = client.Conn.RPush("list-key", "a", "b", "c").Val()
+		utils.AssertnumResult(t, 4, res)
+		client.Conn.LTrim("list-key", 2, -1)
 		t.Log("the list is: ", fmt.Sprintf("%v", conn.LRange("list-key", 0, -1).Val()))
-		defer conn.Reset()
+		defer client.Reset()
 	})
 
 	t.Run("Block pop", func(t *testing.T) {
-		conn.RPush("list", "item1")
-		conn.RPush("list", "item2")
-		conn.RPush("list2", "item3")
-		item := conn.BRPopLPush("list2", "list", 1*time.Second).Val()
-		assertStringResult(t, "item3", item)
-		conn.BRPopLPush("list2", "list", 1*time.Second)
+		client.Conn.RPush("list", "item1")
+		client.Conn.RPush("list", "item2")
+		client.Conn.RPush("list2", "item3")
+		item := client.Conn.BRPopLPush("list2", "list", 1*time.Second).Val()
+		utils.AssertStringResult(t, "item3", item)
+		client.Conn.BRPopLPush("list2", "list", 1*time.Second)
 		t.Log("the list is: ", fmt.Sprintf("%v", conn.LRange("list", 0, -1).Val()))
-		conn.BRPopLPush("list", "list2", 1*time.Second)
+		client.Conn.BRPopLPush("list", "list2", 1*time.Second)
 		t.Log("the list is: ", fmt.Sprintf("%v", conn.LRange("list", 0, -1).Val()))
 		t.Log("the list2 is: ", fmt.Sprintf("%v", conn.LRange("list2", 0, -1).Val()))
-		res := conn.BLPop(1*time.Second, "list", "list2").Val()
+		res := client.Conn.BLPop(1*time.Second, "list", "list2").Val()
 		t.Log("the result of blpop: ", res)
-		res = conn.BLPop(1*time.Second, "list", "list2").Val()
+		res = client.Conn.BLPop(1*time.Second, "list", "list2").Val()
 		t.Log("the result of blpop: ", res)
-		res = conn.BLPop(1*time.Second, "list", "list2").Val()
+		res = client.Conn.BLPop(1*time.Second, "list", "list2").Val()
 		t.Log("the result of blpop: ", res)
-		res = conn.BLPop(1*time.Second, "list", "list2").Val()
+		res = client.Conn.BLPop(1*time.Second, "list", "list2").Val()
 		t.Log("the result of blpop: ", res)
-		defer conn.Reset()
+		defer client.Reset()
 	})
 
 	t.Run("Operation of set", func(t *testing.T) {
-		res := conn.SAdd("set-key", "a", "b", "c").Val()
-		assertnumResult(t, 3, res)
-		conn.SRem("set-key", "c", "d")
-		res = conn.SRem("set-key", "c", "d").Val()
-		assertnumResult(t, 0, res)
-		res = conn.SCard("set-key").Val()
-		assertnumResult(t, 2, 2)
+		res := client.Conn.SAdd("set-key", "a", "b", "c").Val()
+		utils.AssertnumResult(t, 3, res)
+		client.Conn.SRem("set-key", "c", "d")
+		res = client.Conn.SRem("set-key", "c", "d").Val()
+		utils.AssertnumResult(t, 0, res)
+		res = client.Conn.SCard("set-key").Val()
+		utils.AssertnumResult(t, 2, 2)
 		t.Log("all items in set: ", fmt.Sprintf("%v", conn.SMembers("set-key").Val()))
-		conn.SMove("set-key", "set-key2", "a")
-		conn.SMove("set-key", "set-key2", "c")
+		client.Conn.SMove("set-key", "set-key2", "a")
+		client.Conn.SMove("set-key", "set-key2", "c")
 		t.Log("all items in set2: ", fmt.Sprintf("%v", conn.SMembers("set-key2").Val()))
 
-		conn.SAdd("skey1", "a", "b", "c", "d")
-		conn.SAdd("skey2", "c", "d", "e", "f")
-		set := conn.SDiff("skey1", "skey2").Val()
+		client.Conn.SAdd("skey1", "a", "b", "c", "d")
+		client.Conn.SAdd("skey2", "c", "d", "e", "f")
+		set := client.Conn.SDiff("skey1", "skey2").Val()
 		t.Log("the diff between two set is: ", set)
-		set = conn.SInter("skey1", "skey2").Val()
+		set = client.Conn.SInter("skey1", "skey2").Val()
 		t.Log("the inter between two set is: ", set)
-		set = conn.SUnion("skey1", "skey2").Val()
+		set = client.Conn.SUnion("skey1", "skey2").Val()
 		t.Log("the union between two set is: ", set)
-		defer conn.Reset()
+		defer client.Reset()
 	})
 
 	t.Run("Operation on hash", func(t *testing.T) {
-		conn.HMSet("hash-key", map[string]interface{}{
+		client.Conn.HMSet("hash-key", map[string]interface{}{
 			"k1": "v1",
 			"k2": "v2",
 			"k3": "v3",
 		})
-		res := conn.HMGet("hash-key", "k2", "k3").Val()
+		res := client.Conn.HMGet("hash-key", "k2", "k3").Val()
 		t.Log("the result of get: ", res)
-		length := conn.HLen("hash-key").Val()
-		assertnumResult(t, 3, length)
-		conn.HDel("hash-key", "k1", "k2")
-		mps := conn.HGetAll("hash-key").Val()
+		length := client.Conn.HLen("hash-key").Val()
+		utils.AssertnumResult(t, 3, length)
+		client.Conn.HDel("hash-key", "k1", "k2")
+		mps := client.Conn.HGetAll("hash-key").Val()
 		t.Log("the result of get: ", mps)
-		conn.HMSet("hash-key2", map[string]interface{}{
+		client.Conn.HMSet("hash-key2", map[string]interface{}{
 			"short": "hello",
 			"long":  "1000",
 		})
-		strs := conn.HKeys("hash-key2").Val()
+		strs := client.Conn.HKeys("hash-key2").Val()
 		t.Log("the result of hkeys: ", strs)
-		isOk := conn.HExists("hash-key2", "num").Val()
-		assertFalse(t, isOk)
-		count := conn.HIncrBy("hash-key2", "num", 1).Val()
-		assertnumResult(t, 1, count)
-		defer conn.Reset()
+		isOk := client.Conn.HExists("hash-key2", "num").Val()
+		utils.AssertFalse(t, isOk)
+		count := client.Conn.HIncrBy("hash-key2", "num", 1).Val()
+		utils.AssertnumResult(t, 1, count)
+		defer client.Reset()
 	})
 
 	t.Run("Operation on zset", func(t *testing.T) {
-		res := conn.ZAdd("zset-key", redis.Z{Member: "a", Score: 3}, redis.Z{Member: "b", Score: 2},
-			redis.Z{Member: "c", Score: 1}).Val()
-		assertnumResult(t, 3, res)
-		res = conn.ZCard("zset-key").Val()
-		assertnumResult(t, 3, res)
-		fnum := conn.ZIncrBy("zset-key", 3, "c").Val()
-		assertfloatResult(t, 4.0, fnum)
-		fnum = conn.ZScore("zset-key", "b").Val()
-		assertfloatResult(t, 2.0, fnum)
-		res = conn.ZRank("zset-key", "c").Val()
-		assertnumResult(t, 2, res)
-		res = conn.ZCount("zset-key", "0", "3").Val()
-		assertnumResult(t, 2, res)
-		conn.ZRem("zset-key", "b")
-		zset := conn.ZRangeWithScores("zset-key", 0, -1).Val()
+		res := client.Conn.ZAdd("zset-key", &redis.Z{Member: "a", Score: 3}, &redis.Z{Member: "b", Score: 2},
+			&redis.Z{Member: "c", Score: 1}).Val()
+		utils.AssertnumResult(t, 3, res)
+		res = client.Conn.ZCard("zset-key").Val()
+		utils.AssertnumResult(t, 3, res)
+		fnum := client.Conn.ZIncrBy("zset-key", 3, "c").Val()
+		utils.AssertfloatResult(t, 4.0, fnum)
+		fnum = client.Conn.ZScore("zset-key", "b").Val()
+		utils.AssertfloatResult(t, 2.0, fnum)
+		res = client.Conn.ZRank("zset-key", "c").Val()
+		utils.AssertnumResult(t, 2, res)
+		res = client.Conn.ZCount("zset-key", "0", "3").Val()
+		utils.AssertnumResult(t, 2, res)
+		client.Conn.ZRem("zset-key", "b")
+		zset := client.Conn.ZRangeWithScores("zset-key", 0, -1).Val()
 		t.Log("the result of zrange: ", zset)
 
-		conn.ZAdd("zset-1", redis.Z{Member: "a", Score: 1}, redis.Z{Member: "b", Score: 2},
-			redis.Z{Member: "c", Score: 3})
-		conn.ZAdd("zset-2", redis.Z{Member: "b", Score: 4}, redis.Z{Member: "d", Score: 0},
-			redis.Z{Member: "c", Score: 1})
-		conn.ZInterStore("zset-i", redis.ZStore{}, "zset-1", "zset-2")
-		zset = conn.ZRangeWithScores("zset-i", 0, -1).Val()
+		client.Conn.ZAdd("zset-1", &redis.Z{Member: "a", Score: 1}, &redis.Z{Member: "b", Score: 2},
+			&redis.Z{Member: "c", Score: 3})
+		client.Conn.ZAdd("zset-2", &redis.Z{Member: "b", Score: 4}, &redis.Z{Member: "d", Score: 0},
+			&redis.Z{Member: "c", Score: 1})
+		client.Conn.ZInterStore("zset-i", &redis.ZStore{Keys:[]string{"zset-1", "zset-2"}})
+		zset = client.Conn.ZRangeWithScores("zset-i", 0, -1).Val()
 		t.Log("the result of zrange: ", zset)
-		conn.ZUnionStore("zset-u", redis.ZStore{Aggregate: "min"}, "zset-1", "zset-2")
-		zset = conn.ZRangeWithScores("zset-u", 0, -1).Val()
+		client.Conn.ZUnionStore("zset-u", &redis.ZStore{Aggregate: "min", Keys:[]string{"zset-1", "zset-2"}})
+		zset = client.Conn.ZRangeWithScores("zset-u", 0, -1).Val()
 		t.Log("the result of zrange: ", zset)
-		conn.SAdd("set-1", "a", "d")
-		conn.ZUnionStore("zset-u2", redis.ZStore{}, "zset-1", "zset-2", "set-1")
-		zset = conn.ZRangeWithScores("zset-u2", 0, -1).Val()
+		client.Conn.SAdd("set-1", "a", "d")
+		client.Conn.ZUnionStore("zset-u2", &redis.ZStore{Keys:[]string{"zset-1", "zset-2"}})
+		zset = client.Conn.ZRangeWithScores("zset-u2", 0, -1).Val()
 		t.Log("the result of zrange: ", zset)
-		defer conn.Reset()
+		defer client.Reset()
 	})
 
 	t.Run("Sort operation", func(t *testing.T) {
-		conn.RPush("sort-input", 23, 15, 110, 7)
-		res := conn.Sort("sort-input", &redis.Sort{Order: "ASC"}).Val()
+		client.Conn.RPush("sort-input", 23, 15, 110, 7)
+		res := client.Conn.Sort("sort-input", &redis.Sort{Order: "ASC"}).Val()
 		t.Log("result of sort: ", res)
-		res = conn.Sort("sort-input", &redis.Sort{Alpha: true}).Val()
+		res = client.Conn.Sort("sort-input", &redis.Sort{Alpha: true}).Val()
 		t.Log("result of sort: ", res)
-		conn.HSet("d-7", "field", 5)
-		conn.HSet("d-15", "field", 1)
-		conn.HSet("d-23", "field", 9)
-		conn.HSet("d-110", "field", 3)
-		res = conn.Sort("sort-input", &redis.Sort{By: "d-*->field"}).Val()
+		client.Conn.HSet("d-7", "field", 5)
+		client.Conn.HSet("d-15", "field", 1)
+		client.Conn.HSet("d-23", "field", 9)
+		client.Conn.HSet("d-110", "field", 3)
+		res = client.Conn.Sort("sort-input", &redis.Sort{By: "d-*->field"}).Val()
 		t.Log("result of sort: ", res)
-		res = conn.Sort("sort-input", &redis.Sort{By: "d-*->field", Get: []string{"d-*->field"}}).Val()
+		res = client.Conn.Sort("sort-input", &redis.Sort{By: "d-*->field", Get: []string{"d-*->field"}}).Val()
 		t.Log("result of sort: ", res)
-		defer conn.Reset()
+		defer client.Reset()
 	})
 
 	t.Run("Set expire", func(t *testing.T) {
-		conn.Set("key", "value", 0)
-		res := conn.Get("key").Val()
-		assertStringResult(t, "value", res)
-		conn.Expire("key", 1*time.Second)
+		client.Conn.Set("key", "value", 0)
+		res := client.Conn.Get("key").Val()
+		utils.AssertStringResult(t, "value", res)
+		client.Conn.Expire("key", 1*time.Second)
 		time.Sleep(2 * time.Second)
-		res = conn.Get("key").Val()
-		assertStringResult(t, "", res)
-		conn.Set("key", "value2", 0)
-		conn.Expire("key", 100*time.Second)
-		t.Log("the rest time: ", conn.TTL("key").Val())
-		defer conn.Reset()
+		res = client.Conn.Get("key").Val()
+		utils.AssertStringResult(t, "", res)
+		client.Conn.Set("key", "value2", 0)
+		client.Conn.Expire("key", 100*time.Second)
+		t.Log("the rest time: ", client.Conn.TTL("key").Val())
+		defer client.Reset()
+	})
+
+	t.Run("Test transaction", func(t *testing.T) {
+		for i := 0; i < 3; i++ {
+			go client.NotRans()
+		}
+		time.Sleep(500 * time.Millisecond)
+		fmt.Println("=======================================")
+
+		for i := 0; i < 3; i++ {
+			go client.Trans()
+		}
+		time.Sleep(500 * time.Millisecond)
+		defer client.Reset()
+	})
+
+	t.Run("Publish and subscribe", func(t *testing.T) {
+		go client.RunPubsub()
+		client.Publisher(6)
+		time.Sleep(1 * time.Second)
+		defer client.Reset()
 	})
 }
 
-func assertStringResult(t *testing.T, want, get string) {
-	t.Helper()
-	if want != get {
-		t.Errorf("want get %v, actual get %v\n", want, get)
-	}
-}
-
-func assertnumResult(t *testing.T, want, get int64) {
-	t.Helper()
-	if want != get {
-		t.Errorf("want get %v, actual get %v\n", want, get)
-	}
-}
-
-func assertfloatResult(t *testing.T, want, get float64) {
-	t.Helper()
-	if want != get {
-		t.Errorf("want get %v, actual get %v\n", want, get)
-	}
-}
-
-func assertFalse(t *testing.T, v bool) {
-	t.Helper()
-	if v == true {
-		t.Error("assert false but get a true value")
-	}
-}
