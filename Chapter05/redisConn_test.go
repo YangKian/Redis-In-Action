@@ -99,6 +99,22 @@ func Test(t *testing.T) {
 		defer client.Conn.FlushAll()
 	})
 
+	t.Run("Test access time", func(t *testing.T) {
+		t.Log("Let's calculate some access times...")
+		for i := 0; i < 10; i++ {
+			client.AccessTime(fmt.Sprintf("req-%s", strconv.Itoa(i)), func() {
+				time.Sleep(time.Duration(rand.Int63n(5) * 500) * time.Millisecond)
+			})
+		}
+		t.Log("The slowest access times are:")
+		atimes := client.Conn.ZRevRangeWithScores("slowest:AccessTime", 0, -1).Val()
+		for _, v := range atimes[:10] {
+			t.Log(v.Member)
+		}
+		utils.AssertTrue(t, len(atimes) >= 10)
+		defer client.Conn.FlushAll()
+	})
+
 	t.Run("Test ip lookup", func(t *testing.T) {
 		t.Log("Importing IP addresses to Redis... (this may take a while)")
 		client.ImportIpsToRedis(config.FilePath + "GeoLite2-City-Blocks-IPv4.csv")
@@ -133,5 +149,10 @@ func Test(t *testing.T) {
 		time.Sleep(2 * time.Second)
 		t.Log("Should be False again:", client.IsUnderMaintenance())
 		defer client.Conn.FlushAll()
+	})
+
+	t.Run("Test config", func(t *testing.T) {
+		t.Log("Let's set a config and then get a connection from that config...")
+
 	})
 }

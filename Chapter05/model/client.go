@@ -241,7 +241,20 @@ func (c *Client) GetStats(context, types string) map[string]float64 {
 	return stats
 }
 
-//TODO：装饰器实现上下文管理器
+func (c *Client) AccessTime(context string, f func()) {
+	start := time.Now().Unix()
+	f()
+	delta := time.Now().Unix() - start
+	stats := c.UpdateStats(context, "AccessTime", float64(delta), 5)
+	average := stats[1].(*redis.FloatCmd).Val() / stats[0].(*redis.FloatCmd).Val()
+
+	pipe := c.Conn.TxPipeline()
+	pipe.ZAdd("slowest:AccessTime", &redis.Z{Member:context, Score: average})
+	pipe.ZRemRangeByRank("slowest:AccessTime", 0, -101)
+	if _, err := pipe.Exec(); err != nil {
+		log.Println("pipeline err in AccessTime: ", err)
+	}
+}
 
 func (c *Client) IpToScore(ip string) int64 {
 	var score int64 = 0
@@ -386,4 +399,46 @@ func (c *Client) GetConfig(types, comonent string, wait int64) map[string]interf
 	return common.CONFIG[key]
 }
 
-//TODO:装饰器模式实现连接管理
+var checked = map[string]int64{}
+var configs = map[string]map[string]string{}
+var redisConnections = map[string]map[string]string{}
+
+func (c *Client) SetConfigs(types, component string, config map[string]string) {
+	res, err := json.Marshal(config)
+	if err != nil {
+		log.Println("marshal json err: ", err)
+		return
+	}
+	c.Conn.Set(fmt.Sprintf("config:%s:%s", types, component), res, 0)
+}
+
+func (c *Client) GetConfigs(types, component string, wait int64) map[string]string {
+	key := fmt.Sprintf("config:%s:%s", types, component)
+
+	if ch, ok := checked[key]; !ok || ch < time.Now().Unix() - wait {
+		checked[key] = time.Now().Unix()
+		config := map[string]string{}
+		if err := json.Unmarshal([]byte(c.Conn.Get(key).Val()), &config); err != nil {
+			log.Println("unmarshal err in GetConfigs: ", err)
+		}
+		oldConfig := configs[key]
+
+		if !reflect.DeepEqual(oldConfig, config) {
+			configs[key] = config
+		}
+	}
+	return configs[key]
+}
+
+func (c *Client) RedisConnenction(component string, wait int64) func() map[string]string {
+	key := "config:redis:" + component
+	return func() map[string]string {
+		oldConfig := configs[key]
+		config := c.GetConfigs("redis", component, wait)
+
+		if !reflect.DeepEqual(config, oldConfig) {
+			redisConnections[key] = config
+		}
+		return redisConnections[key]
+	}
+}
