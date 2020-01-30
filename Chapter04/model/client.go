@@ -80,39 +80,33 @@ func (c *Client) PurchaseItem(buyerid, itemid, sellerid string, lprice int64) bo
 	return false
 }
 
-//TODO:4.4之前的部分未实现
-
-func (c *Client) ProcessLogs(path string, callback func(string)) {
-	//currentFile := c.Conn.MGet("progress:file").Val()[0].(string)
-	//offset := c.Conn.MGet("progress:position").Val()[0].(int)
-	//
-	//pipeline := c.Conn.Pipeline()
-	//
-	//files, err := ioutil.ReadDir(path)
-	//if err != nil {
-	//	log.Fatalf("read path failed, err: %v\n", err)
-	//}
-	//for _, fname := range files {
-	//	if fname.Name() < currentFile {
-	//		continue
-	//	}
-	//
-	//	inp, err := os.OpenFile(filepath.Join(path, fname.Name()), os.O_RDONLY, 0)
-	//	if err != nil {
-	//		log.Fatalln("open file failed, err: ", err)
-	//	}
-	//	//offsetInt, _ := strconv.ParseInt(offset, 10, 64)
-	//	if fname.Name() == currentFile {
-	//		if _, err := inp.Seek(int64(offset), 10); err != nil {
-	//			log.Fatalln("Seek failed, err is: ", err)
-	//		}
-	//	} else {
-	//		offset = 0
-	//	}
-	//
-	//	currentFile = ""
-	//
-	//	for lno, line := range inp.
-	//}
-
+func (c *Client) UpdateToken(token, user, item string) {
+	timestamp := float64(time.Now().UnixNano())
+	c.Conn.HSet("login:", token, user)
+	c.Conn.ZAdd("recent:", &redis.Z{Member:token, Score:timestamp})
+	if item != "" {
+		c.Conn.ZAdd("viewed:" + token, &redis.Z{Member:item, Score:timestamp})
+		c.Conn.ZRemRangeByRank("viewed:" + token, 0, -26)
+		c.Conn.ZIncrBy("viewed:", -1, item)
+	}
 }
+
+func (c *Client) UpdateTokenPipeline (token, user, item string) {
+	timestamp := float64(time.Now().UnixNano())
+	pipe := c.Conn.Pipeline()
+	pipe.HSet("login:", token, user)
+	pipe.ZAdd("recent:", &redis.Z{Member:token, Score:timestamp})
+	if item != "" {
+		pipe.ZAdd("viewed:" + token, &redis.Z{Member:item, Score:timestamp})
+		pipe.ZRemRangeByRank("viewed:" + token, 0, -26)
+		pipe.ZIncrBy("viewed:", -1, item)
+	}
+	if _, err := pipe.Exec(); err != nil {
+		log.Println("pipeline err in UpdateTokenPipeline: ", err)
+		return
+	}
+	return
+}
+
+//TODO: lack the parts before 4.4
+

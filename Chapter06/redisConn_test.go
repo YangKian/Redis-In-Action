@@ -2,6 +2,9 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
+	"log"
+	"os"
 	"redisInAction/Chapter06/common"
 	"redisInAction/Chapter06/model"
 	"redisInAction/redisConn"
@@ -155,6 +158,67 @@ func Test(t *testing.T) {
 			client.SendMessage(chatId, "joe", fmt.Sprintf("message %s", strconv.Itoa(i)))
 		}
 		t.Log("And let's get the messages that are waiting for jeff and jenny...")
-		//client.FetchPendingMessage("jeff")
+		r1 := client.FetchPendingMessage("jeff")
+		r2 := client.FetchPendingMessage("jenny")
+		t.Log("They are the same?", reflect.DeepEqual(r1, r2))
+		utils.AssertTrue(t, reflect.DeepEqual(r1, r2))
+		t.Log("Those messages are:", r1)
+		defer client.Conn.FlushAll()
+	})
+	
+	t.Run("Test file distribution", func(t *testing.T) {
+		tempDirPath, err := ioutil.TempDir("", "myTempDir")
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		t.Log("Creating some temporary 'log' files...")
+		sizes := []int64{}
+		tempFile1 := utils.GenerationFile(tempDirPath, "temp-1.txt", "one line\n")
+		s1, _ := tempFile1.Seek(0, 1)
+		tempFile2 := utils.GenerationFile(tempDirPath, "temp-2.txt",
+			strings.Repeat("many lines\n", 10000))
+		s2, _ := tempFile2.Seek(0, 1)
+		outFile := utils.GenerationZipFile(tempDirPath, "temp-3.zip")
+		s3, _ := outFile.Seek(0, 1)
+		sizes = append(sizes, s1, s2, s3)
+		t.Log("Done.")
+
+		t.Log("Starting up a thread to copy logs to redis...")
+		var sum int64 = 0
+		for _, v := range sizes {
+			sum += v
+		}
+		go client.CopyLogsToRedis(tempDirPath, "test:", 1, sum + 1, true)
+
+		t.Log("Let's pause to let some logs get copied to Redis...")
+		time.Sleep(250 * time.Millisecond)
+
+		t.Log("Okay, the logs should be ready. Let's process them!")
+
+		index := []int{0}
+		counts := []int{0, 0, 0}
+
+		var callbackFunc = func(line string) {
+			if line == "" {
+				fmt.Println(fmt.Sprintf("Finished with a file %d, linecount: %d", index[0], counts[index[0]]))
+				index[0] += 1
+			} else if line != "" || strings.HasSuffix(line, "\n") {
+				counts[index[0]] += 1
+			}
+		}
+
+		t.Log("Files should have 1, 10000, and 100000 lines")
+		client.ProcessLogsFromRedis(0, callbackFunc)
+		t.Log(counts)
+
+		defer func() {
+			client.Conn.FlushAll()
+			utils.CleanFile(tempFile1)
+			utils.CleanFile(tempFile2)
+			utils.CleanFile(outFile)
+			_ = os.Remove(tempDirPath)
+		}()
 	})
 }
+

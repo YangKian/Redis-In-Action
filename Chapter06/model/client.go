@@ -5,10 +5,14 @@ import (
 	"fmt"
 	"github.com/go-redis/redis/v7"
 	uuid "github.com/satori/go.uuid"
+	"io/ioutil"
 	"log"
 	"math"
+	"os"
+	"path/filepath"
 	"redisInAction/Chapter06/common"
 	"redisInAction/utils"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -135,31 +139,33 @@ func (c *Client) PurchaseItemWithLock(buyerId, itemId, sellerId string) bool {
 
 	var (
 		price float64
-		temp  string
 		funds float64
-		err   error
 	)
-	//TODO：怎么样在pipeline中获取值，不使用tx的话
+
+	resZscore := &redis.FloatCmd{}
+	resHget := &redis.StringCmd{}
+
+	pipe := c.Conn.TxPipeline()
 	if err := c.Conn.Watch(func(tx *redis.Tx) error {
-		price, err = tx.ZScore("market:", item).Result()
-		if err != nil {
+		resZscore = pipe.ZScore("market:", item)
+		resHget = tx.HGet(buyer, "funds")
+		if _, err := pipe.Exec(); err != nil {
+			log.Println("pipeline err in watch func of PurchaseItemWithLock: ", err)
 			return err
 		}
-		temp, err = tx.HGet(buyer, "funds").Result()
-		funds, _ = strconv.ParseFloat(temp, 64)
-		if err != nil {
-			return err
-		}
+		price = resZscore.Val()
+		funds, _ = strconv.ParseFloat(resHget.Val(), 64)
 		return nil
 	}); err != nil {
 		log.Println("tx err in PurchaseItemWithLock: ", err)
+		return false
 	}
+
 
 	if price == 0 || price > funds {
 		return false
 	}
 
-	pipe := c.Conn.TxPipeline()
 	pipe.HIncrBy(seller, "funds", int64(price))
 	pipe.HIncrBy(buyer, "funds", int64(-price))
 	pipe.SAdd(inventory, itemId)
@@ -412,6 +418,7 @@ func (c *Client) PollQueue(channel chan struct{}) {
 	}
 
 	channel <- struct{}{}
+	defer close(channel)
 }
 
 func (c *Client) CreateChat(sender string, recipients *[]string, message string, chatId string) string {
@@ -440,11 +447,16 @@ func (c *Client) CreateChat(sender string, recipients *[]string, message string,
 	return c.SendMessage(chatId, sender, message)
 }
 
-type pack struct {
+type Pack struct {
 	Id      int64
 	Ts      int64
 	Sender  string
 	Message string
+}
+
+type Messages struct {
+	ChatId string
+	ChatMessages []Pack
 }
 
 func (c *Client) SendMessage(chatId, sender, message string) string {
@@ -456,7 +468,7 @@ func (c *Client) SendMessage(chatId, sender, message string) string {
 
 	mid := c.Conn.Incr("ids:" + chatId).Val()
 	ts := time.Now().Unix()
-	packed := pack{
+	packed := Pack{
 		Id:      mid,
 		Ts:      ts,
 		Sender:  sender,
@@ -473,30 +485,254 @@ func (c *Client) SendMessage(chatId, sender, message string) string {
 	return chatId
 }
 
-//TODO: 怎么实现 FetchPendingMessage
-//func (c *Client) FetchPendingMessage(recipient string) {
-//	seen := c.Conn.ZRangeWithScores("seen:" + recipient, 0, -1).Val()
-//	pipeline := c.Conn.TxPipeline()
-//
-//	var res *redis.StringSliceCmd
-//	length := len(seen)
-//	temp := make([]string, 0, length)
-//	for _, v := range seen {
-//		chatId := v.Member.(string)
-//		seenId := v.Score
-//		res = pipeline.ZRangeByScore("msgs:" + chatId, &redis.ZRangeBy{Min:strconv.Itoa(int(seenId + 1)), Max:"inf"})
-//		temp = append(temp, chatId, strconv.Itoa(int(seenId)))
-//	}
-//
-//	if _, err := pipeline.Exec(); err != nil {
-//		log.Println("pipeline err in FetchPendingMessage: ", err)
-//		return
-//	}
-//	chatInfo := [][]string{temp, res.Val()}
-//
-//	for i, v := range chatInfo {
-//
-//	}
-//
-//
+func (c *Client) FetchPendingMessage(recipient string) []Messages {
+	seen := c.Conn.ZRangeWithScores("seen:" + recipient, 0, -1).Val()
+	pipeline := c.Conn.TxPipeline()
+
+	res := &redis.StringSliceCmd{}
+	length := len(seen)
+	temp := make([]string, 0, length)
+	for _, v := range seen {
+		chatId := v.Member.(string)
+		seenId := v.Score
+		res = pipeline.ZRangeByScore("msgs:" + chatId, &redis.ZRangeBy{Min:strconv.Itoa(int(seenId + 1)), Max:"inf"})
+		temp = append(temp, chatId, strconv.Itoa(int(seenId)))
+	}
+
+	if _, err := pipeline.Exec(); err != nil {
+		log.Println("pipeline err in FetchPendingMessage: ", err)
+		return nil
+	}
+	chatInfo := [][]string{temp, res.Val()}
+	result := make([]Messages, len(chatInfo) / 2)
+
+	for i := 0; i < len(chatInfo); i += 2 {
+		if len(chatInfo[i + 1]) == 0 {
+			continue
+		}
+
+		messages := []Pack{}
+		for _, v := range chatInfo[i+1] {
+			message :=Pack{}
+			if err := json.Unmarshal([]byte(v), &message); err != nil {
+				log.Println("unmarshal err in FetchPendingMessage: ", err)
+			}
+			messages = append(messages, message)
+		}
+
+		chatId := chatInfo[i][0]
+		seenId := float64(messages[len(messages) - 1].Id)
+		c.Conn.ZAdd("chat:" + chatId, &redis.Z{Member:recipient, Score: seenId})
+
+		minId := c.Conn.ZRangeWithScores("chat:" + chatId, 0, 0).Val()
+
+		pipeline.ZAdd("seen:" + recipient, &redis.Z{Member:chatId, Score:seenId})
+		if minId != nil {
+			pipeline.ZRemRangeByScore("msgs:" + chatId, string(0), strconv.Itoa(int(minId[0].Score)))
+		}
+		result[i] = Messages{ChatId:chatId, ChatMessages:messages}
+	}
+
+	return result
+}
+
+func (c *Client) JoinChat(chatId, user string) {
+	messageId, _ := c.Conn.Get("ids" + chatId).Float64()
+
+	pipeline := c.Conn.TxPipeline()
+	pipeline.ZAdd("chat:" + chatId, &redis.Z{Member:user, Score:messageId})
+	pipeline.ZAdd("seen:" + user, &redis.Z{Member:chatId, Score:messageId})
+	if _, err := pipeline.Exec(); err != nil {
+		log.Println("pipeline err in JoinChat: ", err)
+	}
+}
+
+func (c *Client) LeaveChat(chatId, user string) {
+	res := &redis.IntCmd{}
+	pipeline := c.Conn.TxPipeline()
+	pipeline.ZRem("chat:" + chatId, user)
+	pipeline.ZRem("seen:" + user, chatId)
+	res = pipeline.ZCard("chat:" + chatId)
+	if _, err := pipeline.Exec(); err != nil {
+		log.Println("pipeline err in LeaveChat: ", err)
+	}
+
+	if res == nil {
+		pipeline.Del("msgs:" + chatId)
+		pipeline.Del("ids:" + chatId)
+		if _, err := pipeline.Exec(); err != nil {
+			log.Println("pipeline err in LeaveChat: ", err)
+		}
+	} else {
+		oldest := c.Conn.ZRangeWithScores("chat:" + chatId, 0, 0).Val()[0]
+		c.Conn.ZRemRangeByScore("msgs:" + chatId, "0", strconv.Itoa(int(oldest.Score)))
+	}
+}
+
+func (c *Client) CopyLogsToRedis(path, channel string, count int, limit int64, quitWhenDone bool) {
+	var bytesInRedis int64 = 0
+	waiting := []os.FileInfo{}
+	recipies := make([]string, count)
+	for i := 0; i < count; i++ {
+		recipies[i] = strconv.Itoa(i)
+	}
+	c.CreateChat("source", &recipies, "", channel)
+	files, err := ioutil.ReadDir(path)
+	if err != nil {
+		log.Println("get dir err in CopyLogsToRedis: ", err)
+		return
+	}
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].Name() < files[j].Name()
+	})
+	for _, logfile := range files {
+		fullPath := filepath.Join(path, logfile.Name())
+
+		finfo, _ := os.Stat(fullPath)
+		fsize := finfo.Size()
+		for bytesInRedis + fsize > limit {
+			cleaned := c.clean(channel, &waiting, count)
+			if cleaned != 0 {
+				bytesInRedis -= cleaned
+			} else {
+				time.Sleep(250 * time.Millisecond)
+			}
+		}
+
+		file, err := os.Open(fullPath)
+		if err != nil {
+			log.Fatalln("open file in CopyLogsToRedis err: ", err)
+			return
+		}
+
+		byteSlice := make([]byte, int(math.Pow(2, 17)))
+		for {
+			temp, _ := file.Read(byteSlice)
+			byteSlice = byteSlice[:temp]
+			if temp == 0 {
+				break
+			}
+			c.Conn.Append(channel + logfile.Name(), string(byteSlice))
+		}
+		c.SendMessage(channel, "source", logfile.Name())
+
+		bytesInRedis += fsize
+		waiting = append(waiting, logfile)
+	}
+
+	if quitWhenDone {
+		c.SendMessage(channel, "source", ":done")
+	}
+
+	for len(waiting) != 0 {
+		cleaned := c.clean(channel, &waiting, count)
+		if cleaned != 0 {
+			bytesInRedis -= cleaned
+		} else {
+			time.Sleep(250 * time.Millisecond)
+		}
+	}
+}
+
+func (c *Client) clean(channel string, waiting *[]os.FileInfo, count int) int64 {
+	if len(*waiting) == 0 {
+		return 0
+	}
+
+	w0 := (*waiting)[0].Name()
+	res, err := c.Conn.Get(channel + w0 + ":donw").Int()
+	if err != nil {
+		//log.Println("Conn.Get err in clean: ", err)
+		return 0
+	}
+	if res >= count {
+		c.Conn.Del(channel + w0, channel + w0 + ":done")
+		left := (*waiting)[0]
+		*waiting = (*waiting)[1:]
+		return left.Size()
+	}
+	return 0
+}
+
+func (c *Client) ProcessLogsFromRedis(id int, callback func(string)) {
+	for {
+		fdata := c.FetchPendingMessage(strconv.Itoa(id))
+
+		for _, v := range fdata {
+			ch := v.ChatId
+			for _, message := range v.ChatMessages {
+				logfile := message.Message
+
+				if logfile == ":done" {
+					return
+				} else if logfile == "" {
+					continue
+				}
+
+				blockReader := c.readBlocks
+				//if strings.HasSuffix(logfile, ".zip") {
+				//	blockReader = c.readBlocksGz
+				//}
+
+				for line := range c.readLines(ch + logfile, blockReader) {
+					if line == "" {
+						break
+					}
+					callback(line)
+				}
+				callback("")
+
+				c.Conn.Incr(ch+logfile + ":done")
+			}
+		}
+
+		if len(fdata) == 0 {
+			time.Sleep(1 * time.Second)
+		}
+	}
+}
+
+func (c *Client) readLines(key string, rblocks func(string) <- chan string) <- chan string {
+	res := make(chan string)
+	go func() {
+		var out string
+		for block := range rblocks(key) {
+			out += block
+			posn := strings.LastIndex(out, "\n")
+			if posn >= 0 {
+				for _, line := range strings.Split(out[:posn], "\n") {
+					res <- line + "\n"
+				}
+				out = out[posn + 1:]
+			}
+		}
+		res <- out
+		defer close(res)
+	}()
+	return res
+}
+
+func (c *Client) readBlocks(key string) <- chan string {
+	blocksize := int64(math.Pow(2, 17))
+	res := make(chan string)
+	go func() {
+		var lb = blocksize
+		var pos int64 = 0
+		for lb == blocksize {
+			block := c.Conn.GetRange(key, pos, pos + blocksize - 1).Val()
+			res <- block
+			lb = int64(len(block))
+			pos += lb
+		}
+		defer close(res)
+	}()
+
+	return res
+}
+
+//TODO: achieve the func DailyCountryAggregate and readBlocksGz
+//func (c *Client) DailyCountryAggregate(line string) {
+//}
+
+//func (c *Client) readBlocksGz(key string) <- chan string {
 //}

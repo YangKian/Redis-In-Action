@@ -50,5 +50,29 @@ func Test(t *testing.T) {
 		utils.AssertTrue(t, client.Conn.ZScore("market:", "itemX.userX").Val() == 0)
 	})
 	defer client.Conn.FlushAll()
-	//TODO:benchmark
+}
+
+func BenchmarkUpdateToken(b *testing.B) {
+	conn := redisConn.ConnectRedis()
+	client := model.NewClient(conn)
+
+	b.Run("BenchmarkUpdateTokenPipeline", func(b *testing.B) {
+		count := 0
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			count++
+			client.UpdateTokenPipeline("token", "user", "item")
+		}
+		defer client.Conn.FlushAll()
+	})
+
+	b.Run("BenchmarkUpdateToken", func(b *testing.B) {
+		count := 0
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			count++
+			client.UpdateToken("token", "user", "item")
+		}
+		defer client.Conn.FlushAll()
+	})
 }
