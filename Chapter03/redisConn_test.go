@@ -218,7 +218,6 @@ func TestLoginCookies(t *testing.T) {
 			go client.NotRans()
 		}
 		time.Sleep(500 * time.Millisecond)
-		fmt.Println("=======================================")
 
 		for i := 0; i < 3; i++ {
 			go client.Trans()

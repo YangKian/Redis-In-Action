@@ -56,8 +56,8 @@ func (r *ArticleRepo) PostArticle(user, title, link string) string {
 		"votes":  1,
 	})
 
-	r.Conn.ZAdd("score:", redis.Z{Score: float64(now + common.VoteScore), Member: article})
-	r.Conn.ZAdd("time", redis.Z{Score: float64(now), Member: article})
+	r.Conn.ZAdd("score:", &redis.Z{Score: float64(now + common.VoteScore), Member: article})
+	r.Conn.ZAdd("time", &redis.Z{Score: float64(now), Member: article})
 	return articleId
 }
 
@@ -94,7 +94,7 @@ func (r *ArticleRepo) GetGroupArticles(group, order string, page int64) []map[st
 	}
 	key := order + group
 	if r.Conn.Exists(key).Val() == 0 {
-		res := r.Conn.ZInterStore(key, redis.ZStore{Aggregate: "MAX"}, "group:"+group, order).Val()
+		res := r.Conn.ZInterStore(key, &redis.ZStore{Aggregate: "MAX", Keys:[]string{"group:"+group, order}}).Val()
 		if res <= 0 {
 			log.Println("ZInterStore return 0")
 		}

@@ -366,10 +366,6 @@ func (c *Client) IsUnderMaintenance() bool {
 		common.LASTCHECKED = time.Now().Unix()
 		common.ISUNDERMAINTENANCE = c.Conn.Get("is-under-maintenance").Val() == "yes"
 	}
-	l := common.LASTCHECKED
-	fmt.Println(l)
-	i := common.ISUNDERMAINTENANCE
-	fmt.Println(i)
 	return common.ISUNDERMAINTENANCE
 }
 

@@ -43,11 +43,10 @@ func (r *Client) Trans() {
 	pipeline.Incr("trans:")
 	time.Sleep(100 * time.Millisecond)
 	pipeline.Decr("trans:")
-	res, err := pipeline.Exec()
+	_, err := pipeline.Exec()
 	if err != nil {
 		log.Println("pipeline failed, the err is: ", err)
 	}
-	fmt.Println(res[0])
 }
 
 func (r *Client) Publisher(n int) {
