@@ -294,7 +294,10 @@ func (c *Client) IndexAd(id string, locations []string, content, types string, v
 	pipeline.HSet("type:", id, types)
 	pipeline.ZAdd("idx:ad:value:", &redis.Z{Member: id, Score: rvalue})
 	pipeline.ZAdd("ad:baseValue:", &redis.Z{Member: id, Score: value})
-	pipeline.SAdd("terms:"+id, words)
+	//pipeline.SAdd("terms:"+id, words) FLAG
+	for _, word := range words {
+		pipeline.SAdd("terms:" + id, word)
+	}
 	if _, err := pipeline.Exec(); err != nil {
 		log.Println("pipeline err in IdexAd: ", err)
 	}
@@ -417,7 +420,7 @@ func (c *Client) UpdateCpms(adId string) {
 	pipeline.SMembers("terms:" + adId)
 	res, err := pipeline.Exec()
 	if err != nil {
-		log.Println("pipeline err in UpdateCpms: ", err)
+		log.Println("pipeline1 err in UpdateCpms: ", err)
 		return
 	}
 	types := res[0].(*redis.StringCmd).Val()
@@ -432,11 +435,8 @@ func (c *Client) UpdateCpms(adId string) {
 	pipeline.Get(fmt.Sprintf("type:%s:views:", types))
 	pipeline.Get(fmt.Sprintf("type:%s:%s:", types, which))
 	res, err = pipeline.Exec()
-	//TODO：100次展示会触发更新，此时没有触发过点击，所以type:cpc:clicks:会返回 redis:nil，该怎么处理？
-	if err != nil {
-		//fmt.Println(res)
+	if err != nil && err != redis.Nil{
 		log.Println("pipeline err in UpdateCpms: ", err)
-		//return
 	}
 	typeViews, _ := res[0].(*redis.StringCmd).Int()
 	typeClicks, _ := res[1].(*redis.StringCmd).Int()
@@ -448,7 +448,7 @@ func (c *Client) UpdateCpms(adId string) {
 	if typeClicks == 0 {
 		typeClicks = 1
 	}
-	common.AVERAGEPER1K[types] = float64(1000 * typeClicks / typeViews)
+	common.AVERAGEPER1K[types] = float64(1000 * typeClicks) / float64(typeViews)
 
 	if types == "cpm" {
 		return
@@ -460,17 +460,23 @@ func (c *Client) UpdateCpms(adId string) {
 	pipeline.ZScore(viewKey, "")
 	pipeline.ZScore(clickKey, "")
 	res, err = pipeline.Exec()
-	if err != nil {
-		log.Println("pipeline err in UpdateCpms: ", err)
-		return
+	if err != nil && err != redis.Nil{
+		log.Println("pipeline2 err in UpdateCpms: ", err)
+		//return
 	}
-	adViews, adClicks := res[0].(*redis.FloatCmd).Val(), res[1].(*redis.FloatCmd).Val()
+	var adViews, adClicks float64
+	if err == redis.Nil {
+		adViews, adClicks = 0, 0
+	} else {
+		adViews, adClicks = res[0].(*redis.FloatCmd).Val(), res[1].(*redis.FloatCmd).Val()
+	}
+
 	if adViews == 0 {
 		adViews = 1
 	}
 
 	var adEcpm float64
-	if adViews < 1 {
+	if adClicks < 1 {
 		adEcpm = c.Conn.ZScore("idx:ad:value:", adId).Val()
 	} else {
 		adEcpm = toECPM(types, adViews, adClicks, baseValue)
@@ -481,11 +487,16 @@ func (c *Client) UpdateCpms(adId string) {
 		pipeline.ZScore(viewKey, word)
 		pipeline.ZScore(clickKey, word)
 		res, err = pipeline.Exec()
-		if err != nil {
-			log.Println("pipeline err in UpdateCpms: ", err)
+		if err != nil && err != redis.Nil{
+			log.Println("pipeline3 err in UpdateCpms: ", err)
 			return
 		}
-		views, clicks := res[len(res)-1].(*redis.FloatCmd).Val(), res[len(res)-2].(*redis.FloatCmd).Val()
+		var views, clicks float64
+		if err == redis.Nil {
+			adViews, adClicks = 0, 0
+		} else {
+			views, clicks = res[len(res)-2].(*redis.FloatCmd).Val(), res[len(res)-1].(*redis.FloatCmd).Val()
+		}
 
 		if clicks < 1 {
 			continue
@@ -500,7 +511,7 @@ func (c *Client) UpdateCpms(adId string) {
 		pipeline.ZAdd("idx:"+word, &redis.Z{Member: adId, Score: bonus})
 	}
 	if _, err := pipeline.Exec(); err != nil {
-		log.Println("pipeline err in UpdateCpms: ", err)
+		log.Println("pipeline4 err in UpdateCpms: ", err)
 		return
 	}
 }
@@ -630,7 +641,7 @@ func (c *Client) SearchJobYears(skillyears map[string]int64) []string {
 	for skill, years := range skillyears {
 		subResult := c.Zintersect(map[string]float64{"jobs:all": float64(-years),
 			fmt.Sprintf("skill:%s:years", skill): 1}, 30, "")
-		pipeline.ZRemRangeByScore("idx:"+subResult, "(0", "inf")
+		c.Conn.ZRemRangeByScore("idx:"+subResult, "(0", "inf")
 		union = append(union, c.Zintersect(map[string]float64{"jobs:all": 1, subResult: 0}, 30, ""))
 	}
 
@@ -643,11 +654,10 @@ func (c *Client) SearchJobYears(skillyears map[string]int64) []string {
 	finalResult := c.Zintersect(map[string]float64{jobScores: -1, "jobs:req": 1}, 30, "")
 	var res *redis.StringSliceCmd
 	res = pipeline.ZRangeByScore("idx:"+finalResult, &redis.ZRangeBy{Min: "-inf", Max: "0"})
-	rrr, err := pipeline.Exec()
+	_, err := pipeline.Exec()
 	if err != nil {
 		log.Println("pipeline err in IndexJobLevels: ", err)
 		return nil
 	}
-	fmt.Println(rrr)
 	return res.Val()
 }

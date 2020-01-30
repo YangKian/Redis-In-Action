@@ -156,7 +156,6 @@ func (c *Client) SyndicateStatusList(uid string, post map[string]float64, start 
 	}
 }
 
-//TODO：怎么用守护线程的模式来实现
 func (c *Client) executeLater(queue, name string, args ...interface{}) {
 	go func() {
 		methodValue := reflect.ValueOf(c).MethodByName(name)

@@ -46,13 +46,4 @@ func Test(t *testing.T) {
 		utils.AssertnumResult(t, 5, client.Conn.LLen("test").Val())
 		defer client.Conn.FlushAll()
 	})
-
-	t.Run("Test shard key", func(t *testing.T) {
-		base := "test"
-		t.Log(client.ShardKey(base, "1", 2, 2))
-		t.Log(client.ShardKey(base, "225", 1000, 1000))
-		t.Log(client.ShardKey(base, "fhjj", 2, 2))
-		//utils.AssertTrue(t, client.ShardKey(base, "225", 1000, 1000) == "test:2")
-		defer client.Conn.FlushAll()
-	})
 }

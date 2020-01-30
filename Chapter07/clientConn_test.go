@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"github.com/go-redis/redis/v7"
 	"redisInAction/Chapter07/common"
 	"redisInAction/Chapter07/model"
@@ -158,14 +157,11 @@ func Test(t *testing.T) {
 		client.IndexAd("1", []string{"USA", "CA"}, common.CONTENT, "cpc", 0.25)
 		client.IndexAd("2", []string{"USA", "VA"}, common.CONTENT+"wooooo", "cpc", 0.125)
 
-		adId := make([]string, 100, 100)
-		targetId := make([]string, 100, 100)
+		var adId, targetId string
 		for i := 0; i < 100; i++ {
-			targetTemp, temp := client.TargetAds([]string{"USA"}, common.CONTENT)
-			adId[i] = temp
-			targetId[i] = targetTemp
+			targetId, adId = client.TargetAds([]string{"USA"}, common.CONTENT)
 		}
-		utils.AssertTrue(t, adId[0] == "1")
+		utils.AssertTrue(t, adId == "1")
 
 		_, r := client.TargetAds([]string{"VA"}, "wooooo")
 		utils.AssertTrue(t, r == "2")
@@ -175,25 +171,23 @@ func Test(t *testing.T) {
 			res[v.Member.(string)] = v.Score
 		}
 		utils.AssertTrue(t, reflect.DeepEqual(res, map[string]float64{"2": 0.125, "1": 0.25}))
-		for _, v := range client.Conn.ZRangeWithScores("ad:baseValue:value:", 0, -1).Val() {
+		for _, v := range client.Conn.ZRangeWithScores("ad:baseValue:", 0, -1).Val() {
 			res[v.Member.(string)] = v.Score
 		}
 		utils.AssertTrue(t, reflect.DeepEqual(res, map[string]float64{"2": 0.125, "1": 0.25}))
 
-		fmt.Println(targetId[0], adId[0])
-		client.RecordClick(targetId[0], adId[0], false)
+		client.RecordClick(targetId, adId, false)
 		res = map[string]float64{}
 		for _, v := range client.Conn.ZRangeWithScores("idx:ad:value:", 0, -1).Val() {
 			res[v.Member.(string)] = v.Score
 		}
-		fmt.Println("res 185 ", res)
+
 		utils.AssertTrue(t, reflect.DeepEqual(res, map[string]float64{"2": 0.125, "1": 2.5}))
-		for _, v := range client.Conn.ZRangeWithScores("ad:baseValue:value:", 0, -1).Val() {
+		for _, v := range client.Conn.ZRangeWithScores("ad:baseValue:", 0, -1).Val() {
 			res[v.Member.(string)] = v.Score
 		}
-		fmt.Println("res 191 ", res) //TODO:测试结果不正确
-		utils.AssertTrue(t, reflect.DeepEqual(res, map[string]float64{"2": 0.125, "1": 0.25}))
 
+		utils.AssertTrue(t, reflect.DeepEqual(res, map[string]float64{"2": 0.125, "1": 0.25}))
 		defer client.Conn.FlushAll()
 	})
 
@@ -241,26 +235,25 @@ func Test(t *testing.T) {
 		client.Conn.FlushAll()
 	})
 
-	//TODO:测试失败
 	t.Run("Test index and find jobs years", func(t *testing.T) {
 		t.Log("now testing find jobs with years ...")
 		client.IndexJobYears("job1", map[string]int64{"q1": 1})
 		client.IndexJobYears("job2", map[string]int64{"q1": 0, "q2": 2})
 
 		utils.AssertTrue(t, reflect.DeepEqual(client.SearchJobYears(map[string]int64{"q1": 0}), []string{}))
-		//utils.AssertTrue(t, reflect.DeepEqual(client.SearchJobYears(map[string]int64{"q1":1}), []string{"job1"}))
-		//utils.AssertTrue(t, reflect.DeepEqual(client.SearchJobYears(map[string]int64{"q1":2}), []string{"job1"}))
-		//utils.AssertTrue(t, reflect.DeepEqual(client.SearchJobYears(map[string]int64{"q2":1}), []string{}))
-		//utils.AssertTrue(t, reflect.DeepEqual(client.SearchJobYears(map[string]int64{"q2":2}), []string{}))
-		//utils.AssertTrue(t,
-		//	reflect.DeepEqual(client.SearchJobYears(map[string]int64{"q1":0, "q2":1}), []string{}))
-		//utils.AssertTrue(t,
-		//	reflect.DeepEqual(client.SearchJobYears(map[string]int64{"q1":0, "q2":2}), []string{"job2"}))
-		//utils.AssertTrue(t,
-		//	reflect.DeepEqual(client.SearchJobYears(map[string]int64{"q1":1, "q2":1}), []string{"job1"}))
-		//utils.AssertTrue(t,
-		//	reflect.DeepEqual(client.SearchJobYears(map[string]int64{"q1":1, "q2":2}), []string{"job1", "job2"}))
-		//t.Log("which passed")
+		utils.AssertTrue(t, reflect.DeepEqual(client.SearchJobYears(map[string]int64{"q1":1}), []string{"job1"}))
+		utils.AssertTrue(t, reflect.DeepEqual(client.SearchJobYears(map[string]int64{"q1":2}), []string{"job1"}))
+		utils.AssertTrue(t, reflect.DeepEqual(client.SearchJobYears(map[string]int64{"q2":1}), []string{}))
+		utils.AssertTrue(t, reflect.DeepEqual(client.SearchJobYears(map[string]int64{"q2":2}), []string{}))
+		utils.AssertTrue(t,
+			reflect.DeepEqual(client.SearchJobYears(map[string]int64{"q1":0, "q2":1}), []string{}))
+		utils.AssertTrue(t,
+			reflect.DeepEqual(client.SearchJobYears(map[string]int64{"q1":0, "q2":2}), []string{"job2"}))
+		utils.AssertTrue(t,
+			reflect.DeepEqual(client.SearchJobYears(map[string]int64{"q1":1, "q2":1}), []string{"job1"}))
+		utils.AssertTrue(t,
+			reflect.DeepEqual(client.SearchJobYears(map[string]int64{"q1":1, "q2":2}), []string{"job1", "job2"}))
+		t.Log("which passed")
 		client.Conn.FlushAll()
 	})
 }
