@@ -1,0 +1,12 @@
+version: "3"
+
+services: 
+    golang:
+        build: .
+        tty: true
+        volumes:
+            - . :/usr/src/app
+    
+    redis:
+        image: redis
+        port: "6379:63791"
