@@ -1,5 +1,20 @@
-FROM golang:1.14-alpine
+FROM golang:1.14-alpine3.11
 
-WORKDIR /go/src/app
+ENV GO111MODULE on
+ENV GOPROXY https://goproxy.cn,direct
 
-RUN go mod download && go mod tidy
+WORKDIR /src/app
+
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories
+
+COPY go.mod go.sum ./
+RUN go mod download
+RUN set -ex; \
+    apk update; \
+    apk add --no-cache gcc libc-dev
+
+COPY . .
+
+
+
+
