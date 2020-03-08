@@ -1,11 +1,9 @@
 FROM golang:1.14-alpine3.11
 
 ENV GO111MODULE on
-# ENV GOPROXY https://goproxy.cn,direct
+ENV GOPROXY https://goproxy.cn,direct
 
 WORKDIR /src/app
-
-# RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories
 
 ENV CGO_ENABLED=0
 
