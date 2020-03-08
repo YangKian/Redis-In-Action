@@ -7,11 +7,10 @@ WORKDIR /src/app
 
 # RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories
 
+ENV CGO_ENABLED=0
+
 COPY go.mod go.sum ./
 RUN go mod download
-RUN set -ex; \
-    apk update; \
-    apk add --no-cache gcc libc-dev
 
 COPY . .
 
