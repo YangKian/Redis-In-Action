@@ -171,15 +171,16 @@ func (r *Client) CanCache(request string) bool {
 }
 
 func (r *Client) Reset() {
-	delKeys := []string{"login:*", "recent:*", "viewed:*", "cart:*", "cache:*", "delay:*", "schedule:*", "inv:*"}
-	var toDel []string
-	for _, v := range delKeys {
-		toDel = append(toDel, r.Conn.Keys(v).Val()...)
-	}
-
-	if len(toDel) != 0 {
-		r.Conn.Del(toDel...)
-	}
+	//delKeys := []string{"login:*", "recent:*", "viewed:*", "cart:*", "cache:*", "delay:*", "schedule:*", "inv:*"}
+	//var toDel []string
+	//for _, v := range delKeys {
+	//	toDel = append(toDel, r.Conn.Keys(v).Val()...)
+	//}
+	//
+	//if len(toDel) != 0 {
+	//	r.Conn.Del(toDel...)
+	//}
+	r.Conn.FlushDB()
 	common.QUIT = false
 	common.LIMIT = 10000000
 	common.FLAG = 1

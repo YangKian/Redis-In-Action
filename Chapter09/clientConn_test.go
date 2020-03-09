@@ -22,7 +22,7 @@ func Test(t *testing.T) {
 		t.Log(client.Conn.LLen("test"))
 		client.Conn.RPop("test")
 		t.Log(client.Conn.DebugObject("test").Val())
-		defer client.Conn.FlushAll()
+		defer client.Conn.FlushDB()
 	})
 
 	t.Run("intset", func(t *testing.T) {
@@ -44,6 +44,6 @@ func Test(t *testing.T) {
 	t.Run("Test long ziplist performance", func(t *testing.T) {
 		client.LongZiplistPerformance("test", 5, 10, 10)
 		utils.AssertnumResult(t, 5, client.Conn.LLen("test").Val())
-		defer client.Conn.FlushAll()
+		defer client.Conn.FlushDB()
 	})
 }
